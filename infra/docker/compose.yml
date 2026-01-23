@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: lrsold
+      POSTGRES_PASSWORD: lrsold
+      POSTGRES_DB: lrsold
+    ports: ["5432:5432"]
+
+  opensearch:
+    image: opensearchproject/opensearch:2
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ports: ["9200:9200"]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio12345
+    ports: ["9000:9000", "9001:9001"]
+
+  nats:
+    image: nats:2
+    command: ["-js"]
+    ports: ["4222:4222", "8222:8222"]
+
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+    environment:
+      PORT: "8080"
+      PG_DSN: "postgres://lrsold:lrsold@postgres:5432/lrsold?sslmode=disable"
+      OPENSEARCH_URL: "http://opensearch:9200"
+      NATS_URL: "nats://nats:4222"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "minio"
+      S3_SECRET_KEY: "minio12345"
+      S3_BUCKET: "lrsold"
+    depends_on: [postgres, opensearch, minio, nats]
+    ports: ["8080:8080"]
