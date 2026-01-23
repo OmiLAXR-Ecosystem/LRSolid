@@ -148,6 +148,39 @@ pg-up: ## Start local Postgres (docker)
 pg-down: ## Stop/remove local Postgres container
 	@docker rm -f lrsolid-pg || true
 
-
 migrate-up: ## Run DB migrations up
 	@migrate -database "$(PG_DSN)" -path "$(MIGRATIONS_DIR)" up
+
+migrate-down: ## Run DB migrations up
+	@migrate -database "$(PG_DSN)" -path "$(MIGRATIONS_DIR)" down
+
+
+# -----------------------
+# xAPI smoke tests
+# -----------------------
+BASE_URL ?= http://localhost:8080/xapi
+AUTH ?= clientKey:clientSecret
+
+# Use uuidgen if available, otherwise fallback to a timestamp-based id
+STATEMENT_ID ?= $(shell (uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]') || echo "st-$$(date +%s)")
+
+.PHONY: xapi-post
+xapi-post: ## POST a test statement batch, prints returned IDs
+	@curl -sS -u "$(AUTH)" \
+		-H "Content-Type: application/json" \
+		-H "X-Experience-API-Version: 1.0.3" \
+		-X POST "$(BASE_URL)/statements" \
+		-d '{"statements":[{"id":"$(STATEMENT_ID)","actor":{"mbox":"mailto:sergej@example.org"},"verb":{"id":"http://adlnet.gov/expapi/verbs/experienced","display":{"en-US":"experienced"}},"object":{"id":"https://example.org/activity/intro"}}]}'
+	@echo ""
+
+.PHONY: xapi-get
+xapi-get: ## GET a statement by STATEMENT_ID
+	@curl -sS -u "$(AUTH)" \
+		-H "X-Experience-API-Version: 1.0.3" \
+		"$(BASE_URL)/statements?statementId=$(STATEMENT_ID)"
+	@echo ""
+
+.PHONY: xapi-smoke
+xapi-smoke: ## POST then GET same statement id
+	@$(MAKE) xapi-post STATEMENT_ID=$(STATEMENT_ID)
+	@$(MAKE) xapi-get  STATEMENT_ID=$(STATEMENT_ID)
