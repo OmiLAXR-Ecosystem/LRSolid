@@ -184,3 +184,13 @@ xapi-get: ## GET a statement by STATEMENT_ID
 xapi-smoke: ## POST then GET same statement id
 	@$(MAKE) xapi-post STATEMENT_ID=$(STATEMENT_ID)
 	@$(MAKE) xapi-get  STATEMENT_ID=$(STATEMENT_ID)
+
+.PHONY: admin-create
+admin-create: ## Create/update an admin user (EMAIL=... PASSWORD=... ORG=... ROLE=owner)
+	@test -n "$(EMAIL)" || (echo "Missing EMAIL=..."; exit 1)
+	@test -n "$(PASSWORD)" || (echo "Missing PASSWORD=..."; exit 1)
+	@PG_DSN="$(PG_DSN)" $(GO) run ./scripts/create_admin_user.go \
+		--email "$(EMAIL)" \
+		--password "$(PASSWORD)" \
+		--org "$(or $(ORG),default)" \
+		--role "$(or $(ROLE),owner)"
