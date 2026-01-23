@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SGoerzen/LRSolid/apps/api/internal/store"
+	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
 func TestStatements_InsertAndQueryWithCursor(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/<user>/lrsold/apps/api/internal/store"
+	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
 type StatementStore struct {

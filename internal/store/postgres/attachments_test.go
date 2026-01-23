@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/SGoerzen/LRSolid/apps/api/internal/store"
+	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
 func TestAttachments_UpsertGet(t *testing.T) {

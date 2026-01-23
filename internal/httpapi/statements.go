@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/SGoerzen/LRSolid/apps/api/internal/config"
-	"github.com/SGoerzen/LRSolid/apps/api/internal/lrs"
-	"github.com/SGoerzen/LRSolid/apps/api/internal/store"
+	"github.com/SGoerzen/LRSolid/internal/config"
+	"github.com/SGoerzen/LRSolid/internal/lrs"
+	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
 type postStatementsRequest struct {

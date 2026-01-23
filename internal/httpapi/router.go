@@ -6,8 +6,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/SGoerzen/LRSolid/apps/api/internal/config"
-	"github.com/SGoerzen/LRSolid/apps/api/internal/lrs"
+	"github.com/SGoerzen/LRSolid/internal/config"
+	"github.com/SGoerzen/LRSolid/internal/lrs"
 )
 
 func NewRouter(cfg config.Config, svc *lrs.Service) http.Handler {

@@ -11,10 +11,10 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/SGoerzen/LRSolid/apps/api/internal/config"
-	"github.com/SGoerzen/LRSolid/apps/api/internal/httpapi"
-	"github.com/SGoerzen/LRSolid/apps/api/internal/lrs"
-	pgstore "github.com/SGoerzen/LRSolid/apps/api/internal/store/postgres"
+	"github.com/SGoerzen/LRSolid/internal/config"
+	"github.com/SGoerzen/LRSolid/internal/httpapi"
+	"github.com/SGoerzen/LRSolid/internal/lrs"
+	pgstore "github.com/SGoerzen/LRSolid/internal/store/postgres"
 )
 
 func main() {
