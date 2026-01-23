@@ -10,11 +10,22 @@ SHELL := /bin/bash
 ROOT := $(CURDIR)
 API_DIR := $(ROOT)/apps/api
 WEB_DIR := $(ROOT)/apps/web
+MIGRATIONS_DIR := $(ROOT)/migrations
 
 GO ?= go
 PNPM ?= pnpm
 DOCKER ?= docker
 COMPOSE ?= docker compose
+
+# --- Env loading (optional) ---
+# Loads variables from .env if present (exported to recipes)
+ifneq (,$(wildcard .env))
+include .env
+export
+endif
+
+# Default if not set anywhere (shell or .env)
+PG_DSN ?= postgres://postgres:postgres@localhost:5432/lrsolid?sslmode=disable
 
 .DEFAULT_GOAL := help
 
@@ -96,8 +107,8 @@ dev: ## Run API + Web in dev (two terminals recommended)
 	@echo "  make dev-web"
 
 .PHONY: dev-api
-dev-api: ## Run API locally (go run)
-	@cd $(API_DIR) && $(GO) run ./cmd/api
+dev-api: ## Run API locally (requires PG_DSN)
+	@cd $(ROOT) && PG_DSN="$(PG_DSN)" $(GO) run ./apps/api
 
 .PHONY: dev-web
 dev-web: ## Run Web locally (pnpm dev)
@@ -130,3 +141,13 @@ clean: ## Clean build artifacts
 	@rm -rf $(API_DIR)/bin
 	@rm -rf $(WEB_DIR)/dist
 	@rm -rf $(WEB_DIR)/node_modules/.vite
+
+pg-up: ## Start local Postgres (docker)
+	@docker run --name lrsolid-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=lrsolid -p 5432:5432 -d postgres:16 || true
+
+pg-down: ## Stop/remove local Postgres container
+	@docker rm -f lrsolid-pg || true
+
+
+migrate-up: ## Run DB migrations up
+	@migrate -database "$(PG_DSN)" -path "$(MIGRATIONS_DIR)" up
