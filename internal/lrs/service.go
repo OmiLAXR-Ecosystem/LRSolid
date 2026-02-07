@@ -92,3 +92,7 @@ func (s *Service) QueryStatements(ctx context.Context, f store.StatementFilter) 
 	}
 	return s.statements.GetStatements(ctx, f)
 }
+
+func (s *Service) GetStatementByID(ctx context.Context, tenant store.TenantID, id store.StatementID) (store.Statement, error) {
+	return s.statements.GetStatementByID(ctx, tenant, id)
+}

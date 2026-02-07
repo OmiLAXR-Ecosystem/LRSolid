@@ -15,6 +15,9 @@ type Config struct {
 	// xAPI basics
 	DefaultTenant string
 	MaxPageLimit  int
+
+	// Admin UI
+	DefaultOrg string
 }
 
 func Load() (Config, error) {
@@ -24,6 +27,7 @@ func Load() (Config, error) {
 		PostgresDSN:   getenv("PG_DSN", ""),
 		DefaultTenant: getenv("DEFAULT_TENANT", "default"),
 		MaxPageLimit:  getenvInt("MAX_PAGE_LIMIT", 100),
+		DefaultOrg:    getenv("DEFAULT_ORG", "default"),
 	}
 
 	if c.PostgresDSN == "" {

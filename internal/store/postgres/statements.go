@@ -94,6 +94,11 @@ func (s *StatementStore) GetStatements(ctx context.Context, f store.StatementFil
 		args = append(args, *f.StoredSince)
 		argn++
 	}
+	if f.StoredUntil != nil {
+		where += fmt.Sprintf(" AND stored_at <= $%d", argn)
+		args = append(args, *f.StoredUntil)
+		argn++
+	}
 
 	// Cursor: decode to (stored_at, id)
 	if f.Cursor != nil {

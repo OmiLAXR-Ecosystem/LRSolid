@@ -38,7 +38,7 @@ func main() {
 	stmtStore := pgstore.NewStatementStore(db)
 	svc := lrs.NewService(stmtStore)
 
-	router := httpapi.NewRouter(cfg, svc)
+	router := httpapi.NewRouter(cfg, svc, db)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

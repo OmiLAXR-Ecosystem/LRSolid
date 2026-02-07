@@ -68,16 +68,25 @@ function Card(props: { title?: string; className?: string; children: React.React
     );
 }
 
-function NavItem(props: { icon: React.ReactNode; label: string; active?: boolean }) {
+function NavItem(props: { icon: React.ReactNode; label: string; active?: boolean; href?: string }) {
+    const className = [
+        "w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition",
+        props.active
+            ? "bg-white/90 text-slate-900 shadow-sm"
+            : "text-white/90 hover:bg-white/10 hover:text-white",
+    ].join(" ");
+
+    if (props.href) {
+        return (
+            <a href={props.href} className={className} aria-current={props.active ? "page" : undefined}>
+                <span className="h-5 w-5">{props.icon}</span>
+                <span>{props.label}</span>
+            </a>
+        );
+    }
+
     return (
-        <button
-            className={[
-                "w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition",
-                props.active
-                    ? "bg-white/90 text-slate-900 shadow-sm"
-                    : "text-white/90 hover:bg-white/10 hover:text-white",
-            ].join(" ")}
-        >
+        <button type="button" className={className}>
             <span className="h-5 w-5">{props.icon}</span>
             <span>{props.label}</span>
         </button>
@@ -105,8 +114,8 @@ function ProgressRow(props: { label: string; status: "Connected" | "Disconnected
 export function LRSolidDashboard() {
     return (
         <div className="min-h-screen bg-slate-100">
-            <div className="mx-auto max-w-[1400px] p-6">
-                <div className="grid grid-cols-[260px_1fr] gap-6">
+            <div className="p-6">
+                <div className="grid grid-cols-[260px_1fr] gap-6 min-h-[calc(100vh-3rem)]">
                     {/* Sidebar */}
                     <aside className="rounded-2xl bg-gradient-to-b from-teal-600 to-cyan-700 text-white shadow-sm overflow-hidden">
                         <div className="flex items-center gap-3 px-5 py-5 border-b border-white/15">
@@ -117,19 +126,22 @@ export function LRSolidDashboard() {
                         </div>
 
                         <div className="p-4 space-y-2">
-                            <NavItem icon={<LayoutDashboard />} label="Dashboard" active />
-                            <NavItem icon={<FileText />} label="Statements" />
-                            <NavItem icon={<Users />} label="Users" />
-                            <NavItem icon={<BarChart2 />} label="Reports" />
-                            <NavItem icon={<Database />} label="Datasources" />
-                            <NavItem icon={<Store />} label="Plugin Marketplace" />
+                            <NavItem icon={<LayoutDashboard />} label="Dashboard" active href="#/dashboard" />
+                            <NavItem icon={<FileText />} label="Statements" href="#/statements" />
+                            <NavItem icon={<Users />} label="Users" href="#/users" />
+                            <NavItem icon={<BarChart2 />} label="Reports" href="#/reports" />
+                            <NavItem icon={<Database />} label="Datasources" href="#/datasources" />
+                            <NavItem icon={<Store />} label="Plugin Marketplace" href="#/marketplace" />
                         </div>
 
                         <div className="mt-auto p-4">
-                            <button className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition">
+                            <a
+                                href="#/settings"
+                                className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
+                            >
                                 <Plus className="h-5 w-5" />
                                 Settings
-                            </button>
+                            </a>
                         </div>
                     </aside>
 
