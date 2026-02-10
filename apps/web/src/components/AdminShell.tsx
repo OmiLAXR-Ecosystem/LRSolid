@@ -75,52 +75,52 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                             ))}
                         </nav>
 
-                    <div className="mt-auto p-4">
-                        <a
-                            href="#/settings"
-                            className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
-                            aria-current={activeKey === "settings" ? "page" : undefined}
-                        >
-                            <Plus className="h-5 w-5" />
-                            Settings
-                        </a>
-                    </div>
-                </aside>
-
-                <main className="space-y-6">
-                    <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 px-5 py-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3 w-[520px] max-w-full">
-                            {searchPlaceholder && (
-                                <div className="relative w-full">
-                                    <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                    <input
-                                        className="w-full rounded-xl bg-slate-50 ring-1 ring-slate-200 px-10 py-2.5 text-sm outline-none focus:ring-2 focus:ring-teal-300"
-                                        placeholder={searchPlaceholder}
-                                    />
-                                </div>
-                            )}
+                        <div className="mt-auto p-4">
+                            <a
+                                href="#/settings"
+                                className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
+                                aria-current={activeKey === "settings" ? "page" : undefined}
+                            >
+                                <Plus className="h-5 w-5" />
+                                Settings
+                            </a>
                         </div>
+                    </aside>
 
-                        <div className="flex items-center gap-4">
-                            <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
-                                <Bell className="h-5 w-5 text-slate-600" />
-                            </button>
-                            <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
-                                <Settings className="h-5 w-5 text-slate-600" />
-                            </button>
-                            <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
-                                <Calendar className="h-5 w-5 text-slate-600" />
-                            </button>
+                    <main className="space-y-6">
+                        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 px-5 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3 w-[520px] max-w-full">
+                                {searchPlaceholder && (
+                                    <div className="relative w-full">
+                                        <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                        <input
+                                            className="w-full rounded-xl bg-slate-50 ring-1 ring-slate-200 px-10 py-2.5 text-sm outline-none focus:ring-2 focus:ring-teal-300"
+                                            placeholder={searchPlaceholder}
+                                        />
+                                    </div>
+                                )}
+                            </div>
 
-                            <div className="flex items-center gap-2 pl-2">
-                                <div className="h-10 w-10 rounded-full bg-slate-200 ring-1 ring-slate-200" />
-                                <ChevronDown className="h-4 w-4 text-slate-500" />
+                            <div className="flex items-center gap-4">
+                                <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
+                                    <Bell className="h-5 w-5 text-slate-600" />
+                                </button>
+                                <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
+                                    <Settings className="h-5 w-5 text-slate-600" />
+                                </button>
+                                <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
+                                    <Calendar className="h-5 w-5 text-slate-600" />
+                                </button>
+
+                                <div className="flex items-center gap-2 pl-2">
+                                    <div className="h-10 w-10 rounded-full bg-slate-200 ring-1 ring-slate-200" />
+                                    <ChevronDown className="h-4 w-4 text-slate-500" />
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {children}
-                </main>
+                        {children}
+                    </main>
                 </div>
             </div>
         </div>

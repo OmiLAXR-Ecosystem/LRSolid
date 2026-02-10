@@ -41,7 +41,6 @@ function DateBox({ placeholder }: { placeholder: string }) {
 export function StatementsView() {
     return (
         <AdminShell activeKey="statements" searchPlaceholder="Search statements...">
-            <div className="text-2xl font-semibold text-slate-800">Statements</div>
             <Card>
                 <div className="grid grid-cols-[1.1fr_1.1fr_1.1fr_1fr_1fr_auto] gap-4 items-end">
                     <div>

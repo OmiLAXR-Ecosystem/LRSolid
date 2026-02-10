@@ -47,7 +47,6 @@ function SortLabel({ children }: { children: React.ReactNode }) {
 export function UsersView() {
     return (
         <AdminShell activeKey="users" searchPlaceholder="Search users...">
-            <div className="text-2xl font-semibold text-slate-800">Users</div>
             <Card>
                 <div className="flex items-end justify-between gap-6">
                     <div className="grid grid-cols-[1fr_1fr_0.8fr] gap-4 flex-1">
