@@ -26,6 +26,8 @@ import {
     Cell,
 } from "recharts";
 
+import Logo from "./assets/LRSolid_Logo.png";
+
 const kpis = [
     { label: "Total Statements", value: "12,450", icon: <BarChart2 className="h-6 w-6" /> },
     { label: "Active Users", value: "3,200", icon: <Users className="h-6 w-6" /> },
@@ -119,10 +121,7 @@ export function LRSolidDashboard() {
                     {/* Sidebar */}
                     <aside className="rounded-2xl bg-gradient-to-b from-teal-600 to-cyan-700 text-white shadow-sm overflow-hidden">
                         <div className="flex items-center gap-3 px-5 py-5 border-b border-white/15">
-                            <div className="h-9 w-9 rounded-xl bg-white/15 flex items-center justify-center">
-                                <span className="text-lg font-black">L</span>
-                            </div>
-                            <div className="text-xl font-extrabold tracking-tight">LRSolid</div>
+                            <img src={Logo} />
                         </div>
 
                         <div className="p-4 space-y-2">
