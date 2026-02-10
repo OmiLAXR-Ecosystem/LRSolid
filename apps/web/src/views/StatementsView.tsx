@@ -1,6 +1,5 @@
 import { Calendar, ChevronDown, MoreHorizontal, RefreshCw, SlidersHorizontal, Download, Ban } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { AdminShell } from "../components/AdminShell";
 import { Card } from "../components/Card";
 
 type StatementRow = {
@@ -330,7 +329,7 @@ export function StatementsView() {
     const canVoid = import.meta.env.VITE_CAN_VOID !== "false";
 
     return (
-        <AdminShell activeKey="statements" searchPlaceholder="Search statements...">
+        <div className="space-y-6">
             <Card>
                 <div className="grid grid-cols-[1.1fr_1.1fr_1.1fr_1fr_1fr_1fr_auto] gap-4 items-end">
                     <div>
@@ -567,6 +566,6 @@ export function StatementsView() {
                     </div>
                 </div>
             )}
-        </AdminShell>
+        </div>
     );
 }

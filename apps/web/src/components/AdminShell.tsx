@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
     LayoutDashboard,
     FileText,
@@ -6,7 +6,7 @@ import {
     BarChart2,
     Database,
     Store,
-    Plus,
+    KeyRound,
     Search,
     Bell,
     Settings,
@@ -14,7 +14,17 @@ import {
     ChevronDown,
 } from "lucide-react";
 
-type NavKey = "dashboard" | "statements" | "users" | "reports" | "datasources" | "marketplace" | "settings";
+import Logo from "../assets/LRSolid_Logo.png";
+
+type NavKey =
+    | "dashboard"
+    | "statements"
+    | "users"
+    | "clients"
+    | "reports"
+    | "datasources"
+    | "marketplace"
+    | "settings";
 
 type AdminShellProps = {
     activeKey: NavKey;
@@ -33,8 +43,9 @@ const navItems: NavItem[] = [
     { key: "dashboard", label: "Dashboard", href: "#/dashboard", icon: <LayoutDashboard className="h-5 w-5" /> },
     { key: "statements", label: "Statements", href: "#/statements", icon: <FileText className="h-5 w-5" /> },
     { key: "users", label: "Users", href: "#/users", icon: <Users className="h-5 w-5" /> },
+    { key: "clients", label: "Clients", href: "#/clients", icon: <KeyRound className="h-5 w-5" /> },
     { key: "reports", label: "Reports", href: "#/reports", icon: <BarChart2 className="h-5 w-5" /> },
-    { key: "datasources", label: "Datasources", href: "#/datasources", icon: <Database className="h-5 w-5" /> },
+    { key: "datasources", label: "Data Stores", href: "#/datasources", icon: <Database className="h-5 w-5" /> },
     { key: "marketplace", label: "Plugin Marketplace", href: "#/marketplace", icon: <Store className="h-5 w-5" /> },
 ];
 
@@ -57,16 +68,35 @@ function SidebarItem({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShellProps) {
+    const orgOptions = ["LRSolid", "Acme Learning", "Demo Org"];
+    const [org, setOrg] = useState(orgOptions[0]);
+    const isAdmin = import.meta.env.VITE_IS_ADMIN !== "false";
+
     return (
         <div className="min-h-screen bg-slate-100 text-slate-900">
             <div className="p-6">
                 <div className="grid grid-cols-[260px_1fr] gap-6 min-h-[calc(100vh-3rem)]">
                     <aside className="rounded-2xl bg-gradient-to-b from-teal-600 to-cyan-700 text-white shadow-sm overflow-hidden flex flex-col">
                         <div className="px-5 py-5 border-b border-white/15 flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-xl bg-white/15 flex items-center justify-center">
-                                <span className="text-lg font-black">L</span>
+                            <img src={Logo} alt="LRSolid" className="w-full" />
+                        </div>
+
+                        <div className="px-4 pt-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-white/70">Organization</div>
+                            <div className="relative mt-2">
+                                <select
+                                    value={org}
+                                    onChange={(event) => setOrg(event.target.value)}
+                                    className="w-full appearance-none rounded-xl bg-white/10 px-3 py-2 text-sm text-white ring-1 ring-white/20 focus:outline-none focus:ring-2 focus:ring-white/50"
+                                >
+                                    {orgOptions.map((item) => (
+                                        <option key={item} value={item} className="text-slate-900">
+                                            {item}
+                                        </option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="h-4 w-4 text-white/70 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                             </div>
-                            <div className="text-xl font-extrabold tracking-tight">LRSolid</div>
                         </div>
 
                         <nav className="px-4 py-4 space-y-2">
@@ -75,16 +105,18 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                             ))}
                         </nav>
 
-                        <div className="mt-auto p-4">
-                            <a
-                                href="#/settings"
-                                className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
-                                aria-current={activeKey === "settings" ? "page" : undefined}
-                            >
-                                <Plus className="h-5 w-5" />
-                                Settings
-                            </a>
-                        </div>
+                        {isAdmin && (
+                            <div className="mt-auto p-4">
+                                <a
+                                    href="#/settings"
+                                    className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
+                                    aria-current={activeKey === "settings" ? "page" : undefined}
+                                >
+                                    <Settings className="h-5 w-5" />
+                                    Admin Panel
+                                </a>
+                            </div>
+                        )}
                     </aside>
 
                     <main className="space-y-6">

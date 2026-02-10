@@ -43,7 +43,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 		r.Get("/statement/{id}", StatementByID(cfg, svc))
 
 		// REST API (LL-inspired)
-		r.Route("/v2", func(r chi.Router) {
+		r.Route("/v1", func(r chi.Router) {
 			r.Get("/user", RestListUsers(cfg, db))
 			r.Get("/user/count", RestCountUsers(cfg, db))
 		})

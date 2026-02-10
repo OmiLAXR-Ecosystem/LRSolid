@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import { LRSolidDashboard } from "./LRSolidDashboard";
+import { AdminShell } from "./components/AdminShell";
 import { StatementsView } from "./views/StatementsView";
 import { UsersView } from "./views/UsersView";
 import { PlaceholderView } from "./views/PlaceholderView";
@@ -22,22 +23,68 @@ export default function App() {
         return () => window.removeEventListener("hashchange", handler);
     }, []);
 
-    switch (route) {
-        case "dashboard":
-            return <LRSolidDashboard />;
-        case "statements":
-            return <StatementsView />;
-        case "users":
-            return <UsersView />;
-        case "reports":
-            return <PlaceholderView title="Reports" activeKey="reports" />;
-        case "datasources":
-            return <PlaceholderView title="Datasources" activeKey="datasources" />;
-        case "marketplace":
-            return <PlaceholderView title="Plugin Marketplace" activeKey="marketplace" />;
-        case "settings":
-            return <PlaceholderView title="Settings" activeKey="settings" />;
-        default:
-            return <LRSolidDashboard />;
-    }
+    const view = (() => {
+        switch (route) {
+            case "dashboard":
+                return {
+                    activeKey: "dashboard" as const,
+                    searchPlaceholder: "Search...",
+                    content: <LRSolidDashboard />,
+                };
+            case "statements":
+                return {
+                    activeKey: "statements" as const,
+                    searchPlaceholder: "Search statements...",
+                    content: <StatementsView />,
+                };
+            case "users":
+                return {
+                    activeKey: "users" as const,
+                    searchPlaceholder: "Search users...",
+                    content: <UsersView />,
+                };
+            case "clients":
+                return {
+                    activeKey: "clients" as const,
+                    searchPlaceholder: "Search clients...",
+                    content: <PlaceholderView title="Clients" />,
+                };
+            case "reports":
+                return {
+                    activeKey: "reports" as const,
+                    searchPlaceholder: undefined,
+                    content: <PlaceholderView title="Reports" />,
+                };
+            case "datasources":
+                return {
+                    activeKey: "datasources" as const,
+                    searchPlaceholder: undefined,
+                    content: <PlaceholderView title="Data Stores" />,
+                };
+            case "marketplace":
+                return {
+                    activeKey: "marketplace" as const,
+                    searchPlaceholder: undefined,
+                    content: <PlaceholderView title="Plugin Marketplace" />,
+                };
+            case "settings":
+                return {
+                    activeKey: "settings" as const,
+                    searchPlaceholder: undefined,
+                    content: <PlaceholderView title="Settings" />,
+                };
+            default:
+                return {
+                    activeKey: "dashboard" as const,
+                    searchPlaceholder: "Search...",
+                    content: <LRSolidDashboard />,
+                };
+        }
+    })();
+
+    return (
+        <AdminShell searchPlaceholder={view.searchPlaceholder}>
+            {view.content}
+        </AdminShell>
+    );
 }
