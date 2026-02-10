@@ -31,15 +31,27 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 		})
 	})
 
-	// Admin (web UI) API
+	// Docs (OpenAPI)
+	r.Get("/docs", SwaggerUI())
+	r.Get("/docs/openapi.yaml", OpenAPISpec())
+
+	// Connection API (LL-inspired)
 	r.Route("/api", func(r chi.Router) {
-		r.Route("/admin", func(r chi.Router) {
-			r.Get("/dashboard", AdminDashboard(cfg, db))
-			r.Get("/statements", AdminListStatements(cfg, svc))
-			r.Get("/statements/{id}", AdminGetStatement(cfg, svc))
-			r.Get("/users", AdminListUsers(cfg, db))
-			r.Post("/users", AdminCreateUser(cfg, db))
-			r.Patch("/users/{id}", AdminUpdateUser(cfg, db))
+		r.Route("/connection", func(r chi.Router) {
+			r.Get("/statement", ConnectionStatements(cfg, svc))
+		})
+		r.Get("/statement/{id}", StatementByID(cfg, svc))
+
+		// REST API (LL-inspired)
+		r.Route("/v2", func(r chi.Router) {
+			r.Get("/user", RestListUsers(cfg, db))
+			r.Get("/user/count", RestCountUsers(cfg, db))
+		})
+
+		// Aggregation API (LL-inspired)
+		r.Route("/aggregation", func(r chi.Router) {
+			r.Get("/statement", AggregationStatementsNotImplemented())
+			r.Post("/statement", AggregationStatementsNotImplemented())
 		})
 	})
 

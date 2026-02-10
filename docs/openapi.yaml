@@ -1,0 +1,136 @@
+openapi: 3.1.0
+info:
+  title: LRSolid API
+  version: 0.1.0
+  description: |
+    LL-inspired Connection, REST and Aggregation APIs.
+servers:
+  - url: /
+paths:
+  /api/connection/statement:
+    get:
+      summary: List statements via Connection API
+      parameters:
+        - in: query
+          name: first
+          schema: { type: integer, default: 25, maximum: 1000 }
+        - in: query
+          name: after
+          schema: { type: string }
+        - in: query
+          name: actor_mbox
+          schema: { type: string }
+        - in: query
+          name: verb
+          schema: { type: string }
+        - in: query
+          name: activity
+          schema: { type: string }
+        - in: query
+          name: since
+          schema: { type: string }
+        - in: query
+          name: until
+          schema: { type: string }
+      responses:
+        "200":
+          description: Connection response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionStatementResponse'
+  /api/v2/user:
+    get:
+      summary: List users
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 25 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: role
+          schema: { type: string }
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestUserListResponse'
+  /api/v2/user/count:
+    get:
+      summary: Count users
+      responses:
+        "200":
+          description: User count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+  /api/aggregation/statement:
+    get:
+      summary: Aggregation API (not implemented)
+      responses:
+        "501":
+          description: Not implemented
+    post:
+      summary: Aggregation API (not implemented)
+      responses:
+        "501":
+          description: Not implemented
+components:
+  schemas:
+    ConnectionStatement:
+      type: object
+      properties:
+        id: { type: string }
+        actorMbox: { type: string, nullable: true }
+        verbId: { type: string, nullable: true }
+        objectId: { type: string, nullable: true }
+        timestamp: { type: string, nullable: true }
+        storedAt: { type: string }
+    ConnectionStatementEdge:
+      type: object
+      properties:
+        cursor: { type: string }
+        node:
+          $ref: '#/components/schemas/ConnectionStatement'
+    ConnectionPageInfo:
+      type: object
+      properties:
+        hasNextPage: { type: boolean }
+        endCursor: { type: string, nullable: true }
+    ConnectionStatementResponse:
+      type: object
+      properties:
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectionStatementEdge'
+        pageInfo:
+          $ref: '#/components/schemas/ConnectionPageInfo'
+    RestUser:
+      type: object
+      properties:
+        id: { type: string }
+        displayName: { type: string, nullable: true }
+        email: { type: string }
+        role: { type: string }
+        disabledAt: { type: string, nullable: true }
+    RestUserListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestUser'
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
