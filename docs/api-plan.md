@@ -11,24 +11,29 @@ Status: Draft
 ## Scope & Auth Model
 - All API access is scoped to an LRS, enforced by client credentials and scopes.
 - Each client is bound to a project and optionally an LRS; if bound, access is limited to that LRS.
-- Authorization uses HTTP Basic Auth (key/secret), similar to LL’s APIs.
+- Authorization is planned (likely HTTP Basic Auth, key/secret, similar to LL’s APIs).
 
 ## Proposed API Families (LL-inspired)
 
 ### 1) Connection API (preferred for large datasets)
 LL’s Connection API uses cursor-based pagination inspired by GraphQL connections and supports filtering + sort. This pattern is a good fit for large, append-heavy statement collections.
 
-**Endpoints (proposed)**
-- `GET /api/connection/statement`
-- `GET /api/connection/user`
-- `GET /api/connection/client`
-- `GET /api/connection/lrs`
+**Endpoints**
+- `GET /api/connection/statement` (implemented)
+- `GET /api/connection/user` (planned)
+- `GET /api/connection/client` (planned)
+- `GET /api/connection/lrs` (planned)
 
 **Common Query Params**
-- `sort` (JSON encoded, required; default to `{"stored_at":-1,"id":1}`)
-- `filter` (JSON encoded, provider-agnostic filter language)
 - `first` (page size; default 25, max 1000)
 - `after` (cursor)
+
+**Statement Query Params (current)**
+- `actor_mbox`
+- `verb` (verb id)
+- `activity` (object id)
+- `since` (stored_at lower bound)
+- `until` (stored_at upper bound; date-only expands to end-of-day)
 
 **Response Shape (example)**
 ```
@@ -41,23 +46,23 @@ LL’s Connection API uses cursor-based pagination inspired by GraphQL connectio
 ### 2) REST API (CRUD for management models)
 LL’s REST API provides CRUD for models and counts.
 
-**Endpoints (proposed)**
-- `GET /api/v2/{model}`
-- `GET /api/v2/{model}/count`
-- `POST /api/v1/{model}`
-- `GET /api/v1/{model}/{id}`
-- `PATCH /api/v1/{model}/{id}`
-- `DELETE /api/v1/{model}/{id}`
+**Endpoints (current + planned)**
+- `GET /api/v1/{model}` (implemented for `user`)
+- `GET /api/v1/{model}/count` (implemented for `user`)
+- `POST /api/v1/{model}` (planned)
+- `GET /api/v1/{model}/{id}` (planned)
+- `PATCH /api/v1/{model}/{id}` (planned)
+- `DELETE /api/v1/{model}/{id}` (planned)
 
 **Models (initial)**
-- `user`, `client`, `organisation`, `project`, `lrs`
+- `user` (implemented), `client`, `organisation`, `project`, `lrs` (planned)
 
 ### 3) Aggregation API (statements analytics)
 LL’s Aggregation API exposes Mongo’s aggregation pipeline for statements only. We can provide a Postgres-backed aggregation interface that supports a safe, limited pipeline DSL.
 
 **Endpoint (proposed)**
-- `GET /api/aggregation/statement` (query params)
-- Optional `POST /api/aggregation/statement` for large pipelines
+- `GET /api/aggregation/statement` (stubbed)
+- Optional `POST /api/aggregation/statement` for large pipelines (stubbed)
 
 **Query Params (proposed)**
 - `pipeline` (JSON encoded array of stages)
@@ -75,12 +80,15 @@ LL’s Aggregation API exposes Mongo’s aggregation pipeline for statements onl
 - Replace `/api/admin/*` with the public model APIs above.
 - Admin views use the same public APIs with elevated scopes; no separate admin namespace.
 
+## Detail Endpoints
+- `GET /api/statement/{id}` for statement detail (raw xAPI payload + key fields).
+
 ## OpenAPI/Swagger
 - Provide a single OpenAPI 3.1 spec (YAML) under `docs/openapi.yaml`.
 - Generate Swagger UI at `/docs` and spec at `/docs/openapi.yaml`.
 
 ## Next Steps
-1. Decide on initial API families to ship (recommend Connection + REST first).
-2. Define the filter DSL and cursor format as provider-agnostic contracts.
-3. Add OpenAPI skeleton and wire a basic Swagger UI.
-4. Incrementally implement endpoints, starting with `GET /api/connection/statements` and `GET /api/v1/lrs`.
+1. Implement `GET /api/connection/user|client|lrs` and remaining REST models.
+2. Define filter DSL and connection sort contract (provider-agnostic).
+3. Implement aggregation stages (`match`, `group`, `sort`, `limit`) for Postgres.
+4. Add auth/scopes to all public endpoints; enforce LRS scoping per client.

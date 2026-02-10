@@ -39,6 +39,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConnectionStatementResponse'
+  /api/statement/{id}:
+    get:
+      summary: Get statement detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Statement detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatementDetail'
   /api/v2/user:
     get:
       summary: List users
@@ -134,3 +149,13 @@ components:
         total: { type: integer }
         limit: { type: integer }
         offset: { type: integer }
+    StatementDetail:
+      type: object
+      properties:
+        id: { type: string }
+        storedAt: { type: string }
+        timestamp: { type: string, nullable: true }
+        actorMbox: { type: string, nullable: true }
+        verbId: { type: string, nullable: true }
+        objectId: { type: string, nullable: true }
+        raw: { type: object }
