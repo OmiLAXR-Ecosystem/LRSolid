@@ -1,6 +1,21 @@
-DROP INDEX IF EXISTS idx_statements_statement_gin;
-DROP INDEX IF EXISTS idx_statements_obj;
+DROP INDEX IF EXISTS idx_stmt_agents_account;
+DROP INDEX IF EXISTS idx_stmt_agents_mbox;
+DROP INDEX IF EXISTS idx_stmt_agents_stmt;
+DROP TABLE IF EXISTS statement_agents;
+
+DROP INDEX IF EXISTS idx_statements_gin;
+DROP INDEX IF EXISTS idx_statements_score;
+DROP INDEX IF EXISTS idx_statements_result;
+DROP INDEX IF EXISTS idx_statements_context_category;
+DROP INDEX IF EXISTS idx_statements_context_group;
+DROP INDEX IF EXISTS idx_statements_context_parent;
+DROP INDEX IF EXISTS idx_statements_registration;
+DROP INDEX IF EXISTS idx_statements_activity_type;
+DROP INDEX IF EXISTS idx_statements_object_type;
+DROP INDEX IF EXISTS idx_statements_object;
 DROP INDEX IF EXISTS idx_statements_verb;
-DROP INDEX IF EXISTS idx_statements_actor;
+DROP INDEX IF EXISTS idx_statements_actor_sha256;
+DROP INDEX IF EXISTS idx_statements_actor_account;
+DROP INDEX IF EXISTS idx_statements_actor_mbox;
 DROP INDEX IF EXISTS idx_statements_tenant_stored;
 DROP TABLE IF EXISTS statements;
