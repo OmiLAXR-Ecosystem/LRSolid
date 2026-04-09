@@ -1,90 +1,49 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import { AdminShell, type NavKey } from "./components/layout/AdminShell";
 import { LRSolidDashboard } from "./LRSolidDashboard";
-import { AdminShell } from "./components/AdminShell";
 import { StatementsView } from "./views/StatementsView";
 import { UsersView } from "./views/UsersView";
 import { PlaceholderView } from "./views/PlaceholderView";
 
-function normalizeRoute(hash: string) {
-    const cleaned = hash.replace(/^#\/?/, "");
-    return cleaned || "dashboard";
+type RouteConfig = {
+    activeKey: NavKey;
+    searchPlaceholder?: string;
+    content: React.ReactNode;
+};
+
+const ROUTES: Record<string, RouteConfig> = {
+    dashboard:   { activeKey: "dashboard",   searchPlaceholder: "Search...",            content: <LRSolidDashboard /> },
+    statements:  { activeKey: "statements",  searchPlaceholder: "Search statements...", content: <StatementsView /> },
+    users:       { activeKey: "users",       searchPlaceholder: "Search users...",      content: <UsersView /> },
+    clients:     { activeKey: "clients",     searchPlaceholder: "Search clients...",    content: <PlaceholderView title="Clients" /> },
+    reports:     { activeKey: "reports",                                                content: <PlaceholderView title="Reports" /> },
+    datasources: { activeKey: "datasources",                                            content: <PlaceholderView title="Data Stores" /> },
+    marketplace: { activeKey: "marketplace",                                            content: <PlaceholderView title="Plugin Marketplace" /> },
+    settings:    { activeKey: "settings",                                               content: <PlaceholderView title="Settings" /> },
+};
+
+const DEFAULT_ROUTE = ROUTES.dashboard;
+
+function normalizeRoute(hash: string): string {
+    return hash.replace(/^#\/?/, "") || "dashboard";
 }
 
 export default function App() {
     const [route, setRoute] = useState(() => normalizeRoute(window.location.hash));
 
     useEffect(() => {
-        if (!window.location.hash) {
-            window.location.hash = "#/dashboard";
-        }
+        if (!window.location.hash) window.location.hash = "#/dashboard";
         const handler = () => setRoute(normalizeRoute(window.location.hash));
         window.addEventListener("hashchange", handler);
         return () => window.removeEventListener("hashchange", handler);
     }, []);
 
-    const view = (() => {
-        switch (route) {
-            case "dashboard":
-                return {
-                    activeKey: "dashboard" as const,
-                    searchPlaceholder: "Search...",
-                    content: <LRSolidDashboard />,
-                };
-            case "statements":
-                return {
-                    activeKey: "statements" as const,
-                    searchPlaceholder: "Search statements...",
-                    content: <StatementsView />,
-                };
-            case "users":
-                return {
-                    activeKey: "users" as const,
-                    searchPlaceholder: "Search users...",
-                    content: <UsersView />,
-                };
-            case "clients":
-                return {
-                    activeKey: "clients" as const,
-                    searchPlaceholder: "Search clients...",
-                    content: <PlaceholderView title="Clients" />,
-                };
-            case "reports":
-                return {
-                    activeKey: "reports" as const,
-                    searchPlaceholder: undefined,
-                    content: <PlaceholderView title="Reports" />,
-                };
-            case "datasources":
-                return {
-                    activeKey: "datasources" as const,
-                    searchPlaceholder: undefined,
-                    content: <PlaceholderView title="Data Stores" />,
-                };
-            case "marketplace":
-                return {
-                    activeKey: "marketplace" as const,
-                    searchPlaceholder: undefined,
-                    content: <PlaceholderView title="Plugin Marketplace" />,
-                };
-            case "settings":
-                return {
-                    activeKey: "settings" as const,
-                    searchPlaceholder: undefined,
-                    content: <PlaceholderView title="Settings" />,
-                };
-            default:
-                return {
-                    activeKey: "dashboard" as const,
-                    searchPlaceholder: "Search...",
-                    content: <LRSolidDashboard />,
-                };
-        }
-    })();
+    const { activeKey, searchPlaceholder, content } = ROUTES[route] ?? DEFAULT_ROUTE;
 
     return (
-        <AdminShell searchPlaceholder={view.searchPlaceholder}>
-            {view.content}
+        <AdminShell activeKey={activeKey} searchPlaceholder={searchPlaceholder}>
+            {content}
         </AdminShell>
     );
 }
