@@ -1,0 +1,6 @@
+FROM golang:1.25-alpine
+WORKDIR /src
+# Install air for live reload
+RUN go install github.com/air-verse/air@latest
+EXPOSE 8080
+CMD ["air", "-c", ".air.toml"]

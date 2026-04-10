@@ -2,9 +2,10 @@ import { useState, type ReactNode } from "react";
 import {
     LayoutDashboard, FileText, Users, BarChart2,
     Database, Store, KeyRound, Search, Bell,
-    Settings, Calendar, ChevronDown,
+    Settings, Calendar, ChevronDown, LogOut,
 } from "lucide-react";
 import Logo from "../../assets/LRSolid_Logo.png";
+import { useAuth } from "../../contexts/AuthContext";
 
 export type NavKey =
     | "dashboard"
@@ -60,6 +61,8 @@ function SidebarItem({ item, active }: { item: NavItem; active: boolean }) {
 export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShellProps) {
     const [org, setOrg] = useState(ORG_OPTIONS[0]);
     const isAdmin = import.meta.env.VITE_IS_ADMIN !== "false";
+    const { state, logout } = useAuth();
+    const user = state.status === "authenticated" ? state.user : null;
 
     return (
         <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -130,7 +133,22 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                                     <Calendar className="h-5 w-5 text-slate-600" />
                                 </button>
                                 <div className="flex items-center gap-2 pl-2">
-                                    <div className="h-10 w-10 rounded-full bg-slate-200 ring-1 ring-slate-200" />
+                                    <div className="h-9 w-9 rounded-full bg-teal-100 ring-1 ring-teal-200 grid place-items-center text-teal-700 text-sm font-semibold select-none">
+                                        {user?.email?.[0]?.toUpperCase() ?? "?"}
+                                    </div>
+                                    <div className="hidden sm:block">
+                                        <div className="text-xs font-semibold text-slate-700 leading-tight max-w-[120px] truncate">
+                                            {user?.email ?? ""}
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 capitalize">{user?.role ?? ""}</div>
+                                    </div>
+                                    <button
+                                        onClick={() => void logout()}
+                                        title="Sign out"
+                                        className="ml-1 h-8 w-8 rounded-lg ring-1 ring-slate-200 bg-white hover:bg-red-50 hover:ring-red-200 grid place-items-center transition"
+                                    >
+                                        <LogOut className="h-4 w-4 text-slate-500 hover:text-red-500" />
+                                    </button>
                                     <ChevronDown className="h-4 w-4 text-slate-500" />
                                 </div>
                             </div>

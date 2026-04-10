@@ -1,0 +1,28 @@
+# Air — Go live reload config
+# https://github.com/air-verse/air
+
+root = "."
+tmp_dir = "/tmp/air"
+
+[build]
+  cmd = "go build -o /tmp/air/api ./apps/api"
+  bin = "/tmp/air/api"
+  include_ext = ["go"]
+  exclude_dir = ["apps/web", "docs", "migrations", "infra", ".git", "vendor"]
+  delay = 500
+  kill_delay = "500ms"
+  rerun = false
+  log = "build-errors.log"
+
+[log]
+  time = true
+  main_only = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  clean_on_exit = true

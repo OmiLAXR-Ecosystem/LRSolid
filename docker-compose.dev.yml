@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: lrsolid
+      POSTGRES_PASSWORD: lrsolid
+      POSTGRES_DB: lrsolid
+    ports: ["5432:5432"]
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lrsolid"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.dev
+    environment:
+      PORT: "8080"
+      PG_DSN: "postgres://lrsolid:lrsolid@postgres:5432/lrsolid?sslmode=disable"
+      JWT_SECRET: "dev-only-insecure-secret-change-me"
+      DEFAULT_ORG: "default"
+    volumes:
+      # Mount entire repo so air sees all Go source changes
+      - .:/src
+      - go_cache:/root/go/pkg/mod
+      - air_tmp:/tmp/air
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: ["8080:8080"]
+
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install -g pnpm && pnpm install && pnpm dev --host"
+    environment:
+      API_HOST: "http://api:8080"
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+    ports: ["5173:5173"]
+    depends_on: [api]
+
+volumes:
+  postgres_dev_data:
+  go_cache:
+  air_tmp:
+  web_node_modules:

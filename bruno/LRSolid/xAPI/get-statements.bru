@@ -1,0 +1,21 @@
+meta {
+  name: xAPI Get Statements
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/xapi/statements?limit=10
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{sessionCookie}}
+  X-Experience-API-Version: 1.0.3
+}
+
+settings {
+  encodeUrl: true
+  followRedirects: true
+}

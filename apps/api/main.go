@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -17,6 +21,19 @@ import (
 	pgstore "github.com/SGoerzen/LRSolid/internal/store/postgres"
 )
 
+func runMigrations(dsn string) {
+	// golang-migrate pgx/v5 driver expects pgx5:// scheme
+	pgxDSN := "pgx5://" + dsn[len("postgres://"):]
+	m, err := migrate.New("file://migrations", pgxDSN)
+	if err != nil {
+		log.Fatal().Err(err).Msg("migrate: init failed")
+	}
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		log.Fatal().Err(err).Msg("migrate: up failed")
+	}
+	log.Info().Msg("migrate: schema up to date")
+}
+
 func main() {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
@@ -25,6 +42,8 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("config load failed")
 	}
+
+	runMigrations(cfg.PostgresDSN)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

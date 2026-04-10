@@ -18,6 +18,9 @@ type Config struct {
 
 	// Admin UI
 	DefaultOrg string
+
+	// Auth
+	JWTSecret string // Required in production. Set via JWT_SECRET env var.
 }
 
 func Load() (Config, error) {
@@ -28,6 +31,7 @@ func Load() (Config, error) {
 		DefaultTenant: getenv("DEFAULT_TENANT", "default"),
 		MaxPageLimit:  getenvInt("MAX_PAGE_LIMIT", 100),
 		DefaultOrg:    getenv("DEFAULT_ORG", "default"),
+		JWTSecret:     getenv("JWT_SECRET", ""),
 	}
 
 	if c.PostgresDSN == "" {
@@ -35,6 +39,13 @@ func Load() (Config, error) {
 	}
 	if c.MaxPageLimit <= 0 || c.MaxPageLimit > 1000 {
 		c.MaxPageLimit = 100
+	}
+	if c.JWTSecret == "" {
+		if c.Environment != "dev" {
+			return Config{}, fmt.Errorf("JWT_SECRET is required in non-dev environments")
+		}
+		// Dev-only fallback — never use in production
+		c.JWTSecret = "dev-only-insecure-secret-change-me"
 	}
 	return c, nil
 }

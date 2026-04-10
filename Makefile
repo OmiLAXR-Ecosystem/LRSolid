@@ -115,23 +115,95 @@ dev-web: ## Run Web locally (pnpm dev)
 	@cd $(WEB_DIR) && $(PNPM) dev
 
 # -----------------------
-# Docker / Compose
+# Docker / Compose — Production
 # -----------------------
 .PHONY: up
-up: ## Docker compose up (local infra/app if compose.yml present)
+up: ## Start all services (production, detached)
 	@$(COMPOSE) up -d
 
+.PHONY: up-build
+up-build: ## Build images and start all services (production)
+	@$(COMPOSE) up -d --build
+
 .PHONY: down
-down: ## Docker compose down
+down: ## Stop and remove containers (production)
 	@$(COMPOSE) down
 
+.PHONY: down-v
+down-v: ## Stop containers and remove volumes (production)
+	@$(COMPOSE) down -v
+
 .PHONY: logs
-logs: ## Tail docker compose logs
+logs: ## Tail all service logs (production)
 	@$(COMPOSE) logs -f --tail=200
 
+.PHONY: logs-api
+logs-api: ## Tail API logs (production)
+	@$(COMPOSE) logs -f --tail=200 api
+
 .PHONY: docker-build
-docker-build: ## Build docker images (compose build)
+docker-build: ## Build all docker images (production)
 	@$(COMPOSE) build
+
+.PHONY: docker-push
+docker-push: ## Push images to registry (set REGISTRY=... first)
+	@$(COMPOSE) push
+
+# -----------------------
+# Docker / Compose — Development (live reload)
+# -----------------------
+DEV_COMPOSE := $(COMPOSE) -f docker-compose.dev.yml
+
+.PHONY: dev-up
+dev-up: ## Start dev stack (API live reload via air, Vite HMR)
+	@$(DEV_COMPOSE) up
+
+.PHONY: dev-upd
+dev-upd: ## Start dev stack detached
+	@$(DEV_COMPOSE) up -d
+
+.PHONY: dev-down
+dev-down: ## Stop dev stack
+	@$(DEV_COMPOSE) down
+
+.PHONY: dev-down-v
+dev-down-v: ## Stop dev stack and remove volumes
+	@$(DEV_COMPOSE) down -v
+
+.PHONY: dev-logs
+dev-logs: ## Tail all dev service logs
+	@$(DEV_COMPOSE) logs -f --tail=200
+
+.PHONY: dev-logs-api
+dev-logs-api: ## Tail API dev logs
+	@$(DEV_COMPOSE) logs -f --tail=200 api
+
+.PHONY: dev-logs-web
+dev-logs-web: ## Tail Web dev logs (Vite)
+	@$(DEV_COMPOSE) logs -f --tail=200 web
+
+.PHONY: dev-build
+dev-build: ## Rebuild dev images (e.g. after Dockerfile.dev changes)
+	@$(DEV_COMPOSE) build
+
+.PHONY: dev-create-user
+dev-create-user: ## Create user in dev DB: make dev-create-user EMAIL=you@x.com PASSWORD=secret [ROLE=owner]
+	@test -n "$(EMAIL)" || (echo "Missing EMAIL=..."; exit 1)
+	@test -n "$(PASSWORD)" || (echo "Missing PASSWORD=..."; exit 1)
+	@PG_DSN="postgres://lrsolid:lrsolid@localhost:5432/lrsolid?sslmode=disable" \
+		$(GO) run ./scripts/create_admin_user.go \
+		--email "$(EMAIL)" \
+		--password "$(PASSWORD)" \
+		--org "$(or $(ORG),default)" \
+		--role "$(or $(ROLE),owner)"
+
+.PHONY: dev-psql
+dev-psql: ## Open psql shell in dev postgres container
+	@$(DEV_COMPOSE) exec postgres psql -U lrsolid lrsolid
+
+.PHONY: dev-restart-api
+dev-restart-api: ## Restart only the API container (triggers air rebuild)
+	@$(DEV_COMPOSE) restart api
 
 # -----------------------
 # Clean
@@ -194,3 +266,7 @@ admin-create: ## Create/update an admin user (EMAIL=... PASSWORD=... ORG=... ROL
 		--password "$(PASSWORD)" \
 		--org "$(or $(ORG),default)" \
 		--role "$(or $(ROLE),owner)"
+
+.PHONY: create-user
+create-user: ## Create a user: make create-user EMAIL=you@example.com PASSWORD=secret [ORG=default] [ROLE=owner]
+	@$(MAKE) admin-create EMAIL="$(EMAIL)" PASSWORD="$(PASSWORD)" ORG="$(ORG)" ROLE="$(ROLE)"

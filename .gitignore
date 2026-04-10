@@ -1,2 +1,12 @@
 .idea
 .env
+.pnpm-store
+node_modules
+dist
+coverage
+*.log
+*.tsbuildinfo
+*.env
+.DS_Store
+.vscode
+*.suo

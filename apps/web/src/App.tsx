@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AdminShell, type NavKey } from "./components/layout/AdminShell";
 import { LRSolidDashboard } from "./LRSolidDashboard";
 import { StatementsView } from "./views/StatementsView";
 import { UsersView } from "./views/UsersView";
+import { LoginView } from "./views/LoginView";
 import { PlaceholderView } from "./views/PlaceholderView";
 
 type RouteConfig = {
@@ -29,7 +31,8 @@ function normalizeRoute(hash: string): string {
     return hash.replace(/^#\/?/, "") || "dashboard";
 }
 
-export default function App() {
+function AppShell() {
+    const { state } = useAuth();
     const [route, setRoute] = useState(() => normalizeRoute(window.location.hash));
 
     useEffect(() => {
@@ -39,11 +42,32 @@ export default function App() {
         return () => window.removeEventListener("hashchange", handler);
     }, []);
 
+    // Loading: blank screen while checking session
+    if (state.status === "loading") {
+        return (
+            <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+                <div className="text-sm text-slate-400">Loading...</div>
+            </div>
+        );
+    }
+
+    if (state.status === "unauthenticated") {
+        return <LoginView />;
+    }
+
     const { activeKey, searchPlaceholder, content } = ROUTES[route] ?? DEFAULT_ROUTE;
 
     return (
         <AdminShell activeKey={activeKey} searchPlaceholder={searchPlaceholder}>
             {content}
         </AdminShell>
+    );
+}
+
+export default function App() {
+    return (
+        <AuthProvider>
+            <AppShell />
+        </AuthProvider>
     );
 }
