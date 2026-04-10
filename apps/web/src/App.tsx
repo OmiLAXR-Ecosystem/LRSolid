@@ -38,7 +38,8 @@ function parseHash(hash: string): { org: string; route: string } {
     const cleaned = hash.replace(/^#\/?/, "");
     const parts = cleaned.split("/");
     const org = parts[0] ?? "";
-    const route = parts.slice(1).join("/") || "dashboard";
+    const routeWithQuery = parts.slice(1).join("/") || "dashboard";
+    const route = routeWithQuery.split("?")[0] || "dashboard";
     return { org, route };
 }
 

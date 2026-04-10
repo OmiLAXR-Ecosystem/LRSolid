@@ -29,10 +29,10 @@ func (s *StatementStore) UpsertStatements(ctx context.Context, stmts []store.Sta
 	for _, st := range stmts {
 		batch.Queue(`
 			INSERT INTO statements (
-				tenant_id, id, stored_at, actor_mbox, verb_id, object_id, statement
-			) VALUES ($1,$2,$3,$4,$5,$6,$7)
+				tenant_id, id, stored_at, actor_mbox, verb_id, object_id, client_id, statement
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 			ON CONFLICT (tenant_id, id) DO NOTHING
-		`, st.TenantID, st.ID, st.StoredAt, st.ActorMBox, st.VerbID, st.ObjectID, st.RawJSON)
+		`, st.TenantID, st.ID, st.StoredAt, st.ActorMBox, st.VerbID, st.ObjectID, st.ClientID, st.RawJSON)
 	}
 
 	br := s.db.SendBatch(ctx, batch)
@@ -49,11 +49,22 @@ func (s *StatementStore) UpsertStatements(ctx context.Context, stmts []store.Sta
 
 func (s *StatementStore) GetStatementByID(ctx context.Context, tenant store.TenantID, id store.StatementID) (store.Statement, error) {
 	var st store.Statement
-	err := s.db.QueryRow(ctx, `
-		SELECT tenant_id, id, stored_at, actor_mbox, verb_id, object_id, statement
-		FROM statements
-		WHERE tenant_id=$1 AND id=$2
-	`, tenant, id).Scan(&st.TenantID, &st.ID, &st.StoredAt, &st.ActorMBox, &st.VerbID, &st.ObjectID, &st.RawJSON)
+	var err error
+	if tenant == "" {
+		err = s.db.QueryRow(ctx, `
+			SELECT tenant_id, id, stored_at, actor_mbox, verb_id, object_id, client_id, statement
+			FROM statements
+			WHERE id=$1
+			ORDER BY stored_at DESC
+			LIMIT 1
+		`, id).Scan(&st.TenantID, &st.ID, &st.StoredAt, &st.ActorMBox, &st.VerbID, &st.ObjectID, &st.ClientID, &st.RawJSON)
+	} else {
+		err = s.db.QueryRow(ctx, `
+			SELECT tenant_id, id, stored_at, actor_mbox, verb_id, object_id, client_id, statement
+			FROM statements
+			WHERE tenant_id=$1 AND id=$2
+		`, tenant, id).Scan(&st.TenantID, &st.ID, &st.StoredAt, &st.ActorMBox, &st.VerbID, &st.ObjectID, &st.ClientID, &st.RawJSON)
+	}
 
 	if err == pgx.ErrNoRows {
 		return store.Statement{}, store.ErrNotFound
@@ -69,9 +80,14 @@ func (s *StatementStore) GetStatements(ctx context.Context, f store.StatementFil
 		f.Limit = 50
 	}
 
-	args := []any{f.TenantID}
-	where := "tenant_id=$1"
-	argn := 2
+	args := make([]any, 0, 8)
+	where := "1=1"
+	argn := 1
+	if f.TenantID != "" {
+		where += " AND tenant_id=$1"
+		args = append(args, f.TenantID)
+		argn = 2
+	}
 
 	// Optional filters
 	if f.ActorMBox != nil {
@@ -126,7 +142,7 @@ func (s *StatementStore) GetStatements(ctx context.Context, f store.StatementFil
 	args = append(args, limit)
 
 	q := fmt.Sprintf(`
-		SELECT tenant_id, id, stored_at, actor_mbox, verb_id, object_id, statement
+		SELECT tenant_id, id, stored_at, actor_mbox, verb_id, object_id, client_id, statement
 		FROM statements
 		WHERE %s
 		ORDER BY stored_at %s, id %s
@@ -142,7 +158,7 @@ func (s *StatementStore) GetStatements(ctx context.Context, f store.StatementFil
 	out := make([]store.Statement, 0, f.Limit+1)
 	for rows.Next() {
 		var st store.Statement
-		if err := rows.Scan(&st.TenantID, &st.ID, &st.StoredAt, &st.ActorMBox, &st.VerbID, &st.ObjectID, &st.RawJSON); err != nil {
+		if err := rows.Scan(&st.TenantID, &st.ID, &st.StoredAt, &st.ActorMBox, &st.VerbID, &st.ObjectID, &st.ClientID, &st.RawJSON); err != nil {
 			return store.StatementPage{}, err
 		}
 		out = append(out, st)

@@ -36,8 +36,12 @@ func TestIngestStatements_AssignsIDAndExtractsFields(t *testing.T) {
 	}
 	raw, _ := json.Marshal(stmt)
 
-	if err := svc.IngestStatements(context.Background(), store.TenantID("t1"), []json.RawMessage{raw}); err != nil {
+	ids, err := svc.IngestStatements(context.Background(), store.TenantID("t1"), nil, []json.RawMessage{raw})
+	if err != nil {
 		t.Fatalf("ingest error: %v", err)
+	}
+	if len(ids) != 1 || ids[0] == "" {
+		t.Fatalf("expected one returned id")
 	}
 
 	if len(fs.last) != 1 {
@@ -62,7 +66,7 @@ func TestIngestStatements_InvalidJSON(t *testing.T) {
 	svc := NewService(fs)
 
 	bad := json.RawMessage([]byte("{not-json"))
-	err := svc.IngestStatements(context.Background(), store.TenantID("t1"), []json.RawMessage{bad})
+	_, err := svc.IngestStatements(context.Background(), store.TenantID("t1"), nil, []json.RawMessage{bad})
 	if err == nil {
 		t.Fatalf("expected error")
 	}

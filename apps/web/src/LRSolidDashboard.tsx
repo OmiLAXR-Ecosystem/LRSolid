@@ -1,193 +1,245 @@
-import { BarChart2, Users, Calendar } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { BarChart2, Calendar, Users } from "lucide-react";
 import {
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    PieChart,
-    Pie,
-    Cell,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 
 import { Card } from "./components/Card";
+import { fetchDashboard } from "./api/dashboard";
+import { downloadStatementJson, fetchStatementById } from "./api/statements";
+import { useOrg } from "./contexts/OrgContext";
+import type { DashboardResponse } from "./types/dashboard";
+import type { StatementDetail } from "./types/statement";
+import { StatementDetailModal } from "./components/statements/StatementDetailModal";
 
-const kpis = [
-    { label: "Total Statements", value: "12,450", icon: <BarChart2 className="h-6 w-6" /> },
-    { label: "Active Users", value: "3,200", icon: <Users className="h-6 w-6" /> },
-    { label: "Statements Today", value: "245", icon: <Calendar className="h-6 w-6" /> },
-    { label: "Error Logs", value: "8", badge: "0", badgeColor: "bg-red-500" },
-];
+function compact(n: number): string {
+  return new Intl.NumberFormat("de-DE", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
 
-const activity = [
-    { day: "Mon", a: 1200, b: 900 },
-    { day: "Tue", a: 1800, b: 1200 },
-    { day: "Wed", a: 1400, b: 1000 },
-    { day: "Thu", a: 1900, b: 1500 },
-    { day: "Fri", a: 1700, b: 1100 },
-    { day: "Sat", a: 2400, b: 1700 },
-    { day: "Sun", a: 2100, b: 1600 },
-];
+function dayLabel(isoDate: string): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  return d.toLocaleDateString("de-DE", { weekday: "short" });
+}
 
-const engagement = [
-    { name: "Sessions", value: 55 },
-    { name: "Completions", value: 30 },
-    { name: "Failures", value: 15 },
-];
+function relativeTime(iso: string): string {
+  const date = new Date(iso);
+  const deltaMs = Date.now() - date.getTime();
+  const mins = Math.max(1, Math.floor(deltaMs / 60000));
+  if (mins < 60) return `vor ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `vor ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `vor ${days} d`;
+}
 
-const engagementColors = ["#2F5DA8", "#2CBCC7", "#F26B5E"];
+function shortVerb(verbId?: string | null): string {
+  if (!verbId) return "-";
+  const parts = verbId.split("/");
+  return parts[parts.length - 1] || verbId;
+}
 
-const recent = [
-    { user: "john.doe", verb: "completed", time: "5 mins ago" },
-    { user: "emma.smith", verb: "attempted", time: "12 mins ago" },
-    { user: "alex.brown", verb: "viewed", time: "25 mins ago" },
-];
+function shortActor(actorName?: string | null, actorMbox?: string | null): string {
+  if (actorName && actorName.trim() !== "") return actorName.trim();
+  if (!actorMbox) return "anonymous";
+  return actorMbox.replace(/^mailto:/i, "");
+}
 
-function ProgressRow(props: { label: string; status: "Connected" | "Disconnected" }) {
-    const connected = props.status === "Connected";
-    return (
-        <div className="flex items-center gap-4 py-3">
-            <div className={`h-3 w-3 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-400"}`} />
-            <div className="flex-1">
-                <div className="text-sm font-medium text-slate-900">{props.label}</div>
-                <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
-                    <div
-                        className={`h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-300"}`}
-                        style={{ width: connected ? "92%" : "25%" }}
-                    />
-                </div>
-            </div>
-            <span
-                className={`rounded-md px-3 py-1 text-xs font-semibold ${
-                    connected ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-700"
-                }`}
-            >
-                {props.status}
-            </span>
-        </div>
-    );
+function shortObject(objectId?: string | null): string {
+  if (!objectId) return "-";
+  const parts = objectId.split("/");
+  return parts[parts.length - 1] || objectId;
 }
 
 export function LRSolidDashboard() {
-    return (
+  const { currentOrg } = useOrg();
+  const [data, setData] = useState<DashboardResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<StatementDetail | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!currentOrg) return;
+    setLoading(true);
+    setError(null);
+    fetchDashboard(currentOrg)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : "Dashboard request failed"))
+      .finally(() => setLoading(false));
+  }, [currentOrg]);
+
+  const activity = useMemo(
+    () => (data?.activityDaily ?? []).map((d) => ({ day: dayLabel(d.day), count: d.count })),
+    [data?.activityDaily],
+  );
+
+  const coverage = useMemo(() => {
+    const k = data?.kpis;
+    if (!k) return [];
+    const toPct = (have: number, total: number) => (total <= 0 ? 0 : Math.round((have / total) * 100));
+    return [
+      { name: "Projects", value: toPct(k.projectsWithStatements, k.projectsCount) },
+      { name: "LRS", value: toPct(k.lrsWithStatements, k.lrsCount) },
+      { name: "Clients", value: toPct(k.clientsWithStatements, k.clientsCount) },
+    ];
+  }, [data?.kpis]);
+
+  const kpis = data?.kpis;
+  const cards = [
+    { label: "Total Statements", value: compact(kpis?.totalStatements ?? 0), icon: <BarChart2 className="h-6 w-6" /> },
+    { label: "Active Users (30d)", value: compact(kpis?.activeUsers ?? 0), icon: <Users className="h-6 w-6" /> },
+    { label: "Statements Today", value: compact(kpis?.statementsToday ?? 0), icon: <Calendar className="h-6 w-6" /> },
+    { label: "Tracked Clients", value: `${kpis?.clientsWithStatements ?? 0}/${kpis?.clientsCount ?? 0}`, icon: <Users className="h-6 w-6" /> },
+  ];
+
+  const openDetail = async (id: string) => {
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailError(null);
+    try {
+      const d = await fetchStatementById(id);
+      setDetail(d);
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Failed to load statement detail");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    setDetailOpen(false);
+    setDetail(null);
+    setDetailError(null);
+  };
+
+  if (loading && !data) {
+    return <div className="text-sm text-slate-500">Loading dashboard...</div>;
+  }
+  if (error && !data) {
+    return <div className="text-sm text-red-600">{error}</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+      <div className="grid grid-cols-4 gap-4">
+        {cards.map((k) => (
+          <Card key={k.label} className="p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-700">{k.label}</div>
+                <div className="mt-2 text-3xl font-extrabold text-slate-900">{k.value}</div>
+              </div>
+              <div className="text-teal-500">{k.icon}</div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        <Card title="Statement Throughput (7d)">
+          <div className="h-[260px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={activity} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="4 4" />
+                <XAxis dataKey="day" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Line type="monotone" dataKey="count" stroke="#2CBCC7" strokeWidth={3} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card title="Coverage">
+          <div className="grid grid-cols-[240px_1fr] gap-6 items-center">
+            <div className="h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={coverage} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={82} paddingAngle={2}>
+                    {coverage.map((_, i) => (
+                      <Cell key={i} fill={["#2F5DA8", "#2CBCC7", "#F26B5E"][i % 3]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-3 text-sm">
+              {coverage.map((item, i) => (
+                <div key={item.name} className="flex items-center justify-between text-slate-700">
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: ["#2F5DA8", "#2CBCC7", "#F26B5E"][i % 3] }} />
+                    <span className="font-semibold">{item.name}</span>
+                  </div>
+                  <span>{item.value}%</span>
+                </div>
+              ))}
+              <div className="pt-2 text-xs text-slate-500">
+                Projects: {kpis?.projectsWithStatements ?? 0}/{kpis?.projectsCount ?? 0} • LRS: {kpis?.lrsWithStatements ?? 0}/{kpis?.lrsCount ?? 0}
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card title="Recent Statements">
         <div className="space-y-4">
-            <div className="grid grid-cols-4 gap-4">
-                {kpis.map((k) => (
-                    <Card key={k.label} className="p-5">
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <div className="text-sm font-semibold text-slate-700">{k.label}</div>
-                                <div className="mt-2 text-3xl font-extrabold text-slate-900">{k.value}</div>
-                            </div>
-                            <div className="text-teal-500">{k.icon}</div>
-                        </div>
-
-                        {"badge" in k && (
-                            <div className="mt-3 flex justify-end">
-                                <span
-                                    className={`inline-flex items-center justify-center h-7 min-w-7 px-2 rounded-lg text-xs font-bold text-white ${k.badgeColor}`}
-                                >
-                                    {k.badge}
-                                </span>
-                            </div>
-                        )}
-                    </Card>
-                ))}
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-                <Card title="Activity Overview">
-                    <div className="h-[260px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={activity} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
-                                <CartesianGrid strokeDasharray="4 4" />
-                                <XAxis dataKey="day" />
-                                <YAxis />
-                                <Tooltip />
-                                <Line type="monotone" dataKey="a" stroke="#2CBCC7" strokeWidth={3} dot={false} />
-                                <Line type="monotone" dataKey="b" stroke="#2F5DA8" strokeWidth={3} dot={false} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </div>
-                </Card>
-
-                <Card title="User Engagement">
-                    <div className="grid grid-cols-[260px_1fr] gap-6 items-center">
-                        <div className="h-[240px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={engagement}
-                                        dataKey="value"
-                                        nameKey="name"
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={55}
-                                        outerRadius={90}
-                                        paddingAngle={2}
-                                    >
-                                        {engagement.map((_, i) => (
-                                            <Cell key={i} fill={engagementColors[i]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-
-                        <div className="space-y-4">
-                            {engagement.map((item, i) => (
-                                <div
-                                    key={item.name}
-                                    className="flex items-center justify-between text-sm font-semibold text-slate-700"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: engagementColors[i] }} />
-                                        {item.name}
-                                    </div>
-                                    <span className="text-slate-600">{item.value}%</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </Card>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-                <Card title="Recent Statements">
-                    <div className="space-y-4">
-                        {recent.map((row) => (
-                            <div key={row.user} className="flex items-center justify-between text-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="h-9 w-9 rounded-full bg-slate-100 ring-1 ring-slate-200" />
-                                    <div>
-                                        <div className="font-semibold text-slate-800">{row.user}</div>
-                                        <div className="text-xs text-slate-500">{row.verb}</div>
-                                    </div>
-                                </div>
-                                <div className="text-slate-500">{row.time}</div>
-                            </div>
-                        ))}
-                        <div className="text-right">
-                            <a href="#/statements" className="text-sm font-semibold text-teal-600 hover:text-teal-700">
-                                View All
-                            </a>
-                        </div>
-                    </div>
-                </Card>
-
-                <Card title="Data Store Status">
-                    <ProgressRow label="PostgreSQL" status="Connected" />
-                    <ProgressRow label="MongoDB" status="Connected" />
-                    <div className="mt-3 text-right">
-                        <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                            Manage Sources
-                        </button>
-                    </div>
-                </Card>
-            </div>
+          {(data?.recentStatements ?? []).length === 0 && (
+            <div className="text-sm text-slate-500">No statements yet.</div>
+          )}
+          {(data?.recentStatements ?? []).map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              onClick={() => void openDetail(row.id)}
+              className="w-full text-left flex items-center justify-between text-sm rounded-lg px-2 py-1 hover:bg-slate-50 transition"
+            >
+              <div className="min-w-0">
+                <div className="font-semibold text-slate-800 truncate">
+                  {(row.clientName ?? row.lrsName ?? "Client")}: {shortActor(row.actorName, row.actorMbox)} {shortVerb(row.verbId)} {shortObject(row.objectId)}
+                </div>
+                <div className="text-xs text-slate-500 truncate">
+                  {shortVerb(row.verbId)} • {row.projectName} • {row.lrsName ?? row.tenantId}
+                  {row.clientName ? ` • ${row.clientName}` : ""}
+                </div>
+              </div>
+              <div className="ml-4 shrink-0 text-slate-500">{relativeTime(row.storedAt)}</div>
+            </button>
+          ))}
+          <div className="text-right">
+            <a href={`#/${currentOrg}/statements`} className="text-sm font-semibold text-teal-600 hover:text-teal-700">
+              View All
+            </a>
+          </div>
         </div>
-    );
+      </Card>
+
+      <StatementDetailModal
+        open={detailOpen}
+        detail={detail}
+        loading={detailLoading}
+        error={detailError}
+        canExport={true}
+        canVoid={false}
+        onClose={closeDetail}
+        onExport={() => {
+          if (detail) downloadStatementJson(detail);
+        }}
+        onVoid={() => {}}
+      />
+    </div>
+  );
 }

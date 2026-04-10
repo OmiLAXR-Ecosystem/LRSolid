@@ -4,6 +4,7 @@ export type RestLRS = {
   name: string;
   dataStoreId: string;
   dataStoreName: string;
+  statementCount?: number;
   createdAt: string;
 };
 
@@ -22,6 +23,7 @@ export type RestProject = {
   slug: string;
   name: string;
   description?: string | null;
+  statementCount?: number;
   createdAt: string;
 };
 

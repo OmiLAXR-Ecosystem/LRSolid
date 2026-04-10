@@ -19,15 +19,16 @@ func NewService(statements store.StatementStore) *Service {
 	return &Service{statements: statements}
 }
 
-func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, raw []json.RawMessage) error {
+func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, clientID *string, raw []json.RawMessage) ([]string, error) {
 	now := time.Now().UTC()
 	stmts := make([]store.Statement, 0, len(raw))
+	ids := make([]string, 0, len(raw))
 
 	for _, r := range raw {
 		// Minimal parse: id, actor.mbox, verb.id, object.id, timestamp
 		var m map[string]any
 		if err := json.Unmarshal(r, &m); err != nil {
-			return fmt.Errorf("invalid statement json: %w", err)
+			return nil, fmt.Errorf("invalid statement json: %w", err)
 		}
 
 		id := ""
@@ -45,6 +46,7 @@ func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, r
 			TenantID: tenant,
 			ID:       store.StatementID(id),
 			StoredAt: now,
+			ClientID: clientID,
 			RawJSON:  []byte(r),
 		}
 
@@ -77,9 +79,13 @@ func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, r
 		}
 
 		stmts = append(stmts, stmt)
+		ids = append(ids, id)
 	}
 
-	return s.statements.UpsertStatements(ctx, stmts)
+	if err := s.statements.UpsertStatements(ctx, stmts); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 func (s *Service) QueryStatements(ctx context.Context, f store.StatementFilter) (store.StatementPage, error) {

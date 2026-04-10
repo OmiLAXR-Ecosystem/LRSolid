@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useStatements } from "../hooks/useStatements";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { downloadStatementJson, fetchStatementById } from "../api/statements";
@@ -11,6 +12,17 @@ const canVoid = import.meta.env.VITE_CAN_VOID !== "false";
 export function StatementsView() {
     const confirm = useConfirm();
     const stmts = useStatements(confirm);
+
+    useEffect(() => {
+        const hash = window.location.hash;
+        const qIndex = hash.indexOf("?");
+        if (qIndex < 0) return;
+        const query = hash.slice(qIndex + 1);
+        const id = new URLSearchParams(query).get("statementId");
+        if (!id) return;
+        void stmts.openDetail(id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleExport = async (id: string) => {
         // Use cached detail if available, otherwise fetch

@@ -18,6 +18,7 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/httpapi"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
+	"github.com/SGoerzen/LRSolid/internal/statsrollup"
 	pgstore "github.com/SGoerzen/LRSolid/internal/store/postgres"
 )
 
@@ -58,6 +59,39 @@ func main() {
 	svc := lrs.NewService(stmtStore)
 
 	router := httpapi.NewRouter(cfg, svc, db)
+
+	if cfg.StatsRollupEnabled {
+		worker := statsrollup.New(db)
+		go func() {
+			interval := time.Duration(cfg.StatsRollupIntervalS) * time.Second
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+
+			run := func() {
+				// Catch up in a few bursts per tick if backlog exists.
+				for i := 0; i < 10; i++ {
+					n, err := worker.RunBatch(ctx, cfg.StatsRollupBatchSize)
+					if err != nil {
+						log.Error().Err(err).Msg("stats rollup batch failed")
+						return
+					}
+					if n < cfg.StatsRollupBatchSize {
+						return
+					}
+				}
+			}
+
+			run()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					run()
+				}
+			}
+		}()
+	}
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

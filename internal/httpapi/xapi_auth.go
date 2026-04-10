@@ -17,12 +17,20 @@ import (
 type clientAuthContextKey string
 
 const xapiTenantKey clientAuthContextKey = "xapi_tenant"
+const xapiClientIDKey clientAuthContextKey = "xapi_client_id"
 
 func tenantFromRequest(ctx context.Context, cfg config.Config) string {
 	if tenant, ok := ctx.Value(xapiTenantKey).(string); ok && tenant != "" {
 		return tenant
 	}
 	return cfg.DefaultTenant
+}
+
+func clientIDFromRequest(ctx context.Context) *string {
+	if clientID, ok := ctx.Value(xapiClientIDKey).(string); ok && clientID != "" {
+		return &clientID
+	}
+	return nil
 }
 
 func xapiScopeAllowed(scopes []byte, scope string) bool {
@@ -72,17 +80,18 @@ func XAPIClientAuth(cfg config.Config, db *pgxpool.Pool) func(http.Handler) http
 				return
 			}
 
+			var clientID string
 			var secretHash string
 			var lrsID *string
 			var scopesJSON []byte
 			var expiresAt *time.Time
 			err := db.QueryRow(r.Context(), `
-				SELECT secret_hash, lrs_id, scopes::text, expires_at
+				SELECT id::text, secret_hash, lrs_id, scopes::text, expires_at
 				FROM clients
 				WHERE key_id = $1
 				  AND revoked_at IS NULL
 				LIMIT 1
-			`, keyID).Scan(&secretHash, &lrsID, &scopesJSON, &expiresAt)
+			`, keyID).Scan(&clientID, &secretHash, &lrsID, &scopesJSON, &expiresAt)
 			if err != nil {
 				writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "invalid client credentials"})
 				return
@@ -107,7 +116,9 @@ func XAPIClientAuth(cfg config.Config, db *pgxpool.Pool) func(http.Handler) http
 				tenant = *lrsID
 			}
 
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), xapiTenantKey, tenant)))
+			ctx := context.WithValue(r.Context(), xapiTenantKey, tenant)
+			ctx = context.WithValue(ctx, xapiClientIDKey, clientID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

@@ -38,18 +38,19 @@ type restListResponse struct {
 }
 
 type restClient struct {
-	ID        string          `json:"id"`
-	ProjectID string          `json:"projectId"`
-	LRSID     *string         `json:"lrsId,omitempty"`
-	LRSName   *string         `json:"lrsName,omitempty"`
-	Name      string          `json:"name"`
-	Note      *string         `json:"note,omitempty"`
-	KeyID     string          `json:"keyId"`
-	Scopes    json.RawMessage `json:"scopes"`
-	CreatedAt time.Time       `json:"createdAt"`
-	ExpiresAt *time.Time      `json:"expiresAt,omitempty"`
-	RevokedAt *time.Time      `json:"revokedAt,omitempty"`
-	UserIDs   []string        `json:"userIds"`
+	ID             string          `json:"id"`
+	ProjectID      string          `json:"projectId"`
+	LRSID          *string         `json:"lrsId,omitempty"`
+	LRSName        *string         `json:"lrsName,omitempty"`
+	Name           string          `json:"name"`
+	StatementCount int64           `json:"statementCount"`
+	Note           *string         `json:"note,omitempty"`
+	KeyID          string          `json:"keyId"`
+	Scopes         json.RawMessage `json:"scopes"`
+	CreatedAt      time.Time       `json:"createdAt"`
+	ExpiresAt      *time.Time      `json:"expiresAt,omitempty"`
+	RevokedAt      *time.Time      `json:"revokedAt,omitempty"`
+	UserIDs        []string        `json:"userIds"`
 }
 
 type restClientListResponse struct {
@@ -69,27 +70,29 @@ type createClientRequest struct {
 }
 
 type createClientResponse struct {
-	ID        string          `json:"id"`
-	ProjectID string          `json:"projectId"`
-	LRSID     *string         `json:"lrsId,omitempty"`
-	LRSName   *string         `json:"lrsName,omitempty"`
-	Name      string          `json:"name"`
-	Note      *string         `json:"note,omitempty"`
-	KeyID     string          `json:"keyId"`
-	Secret    string          `json:"secret"`
-	Scopes    json.RawMessage `json:"scopes"`
-	CreatedAt time.Time       `json:"createdAt"`
-	ExpiresAt *time.Time      `json:"expiresAt,omitempty"`
-	UserIDs   []string        `json:"userIds"`
+	ID             string          `json:"id"`
+	ProjectID      string          `json:"projectId"`
+	LRSID          *string         `json:"lrsId,omitempty"`
+	LRSName        *string         `json:"lrsName,omitempty"`
+	Name           string          `json:"name"`
+	StatementCount int64           `json:"statementCount"`
+	Note           *string         `json:"note,omitempty"`
+	KeyID          string          `json:"keyId"`
+	Secret         string          `json:"secret"`
+	Scopes         json.RawMessage `json:"scopes"`
+	CreatedAt      time.Time       `json:"createdAt"`
+	ExpiresAt      *time.Time      `json:"expiresAt,omitempty"`
+	UserIDs        []string        `json:"userIds"`
 }
 
 type restLRS struct {
-	ID            string    `json:"id"`
-	ProjectID     string    `json:"projectId"`
-	Name          string    `json:"name"`
-	DataStoreID   string    `json:"dataStoreId"`
-	DataStoreName string    `json:"dataStoreName"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ID             string    `json:"id"`
+	ProjectID      string    `json:"projectId"`
+	Name           string    `json:"name"`
+	DataStoreID    string    `json:"dataStoreId"`
+	DataStoreName  string    `json:"dataStoreName"`
+	StatementCount int64     `json:"statementCount"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 type restLRSListResponse struct {
@@ -103,11 +106,12 @@ type createLRSRequest struct {
 }
 
 type restProject struct {
-	ID          string    `json:"id"`
-	Slug        string    `json:"slug"`
-	Name        string    `json:"name"`
-	Description *string   `json:"description,omitempty"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID             string    `json:"id"`
+	Slug           string    `json:"slug"`
+	Name           string    `json:"name"`
+	Description    *string   `json:"description,omitempty"`
+	StatementCount int64     `json:"statementCount"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 type restProjectListResponse struct {
@@ -132,9 +136,10 @@ type restDataStoreListResponse struct {
 }
 
 type restOrg struct {
-	ID   string `json:"id"`
-	Slug string `json:"slug"`
-	Name string `json:"name"`
+	ID             string `json:"id"`
+	Slug           string `json:"slug"`
+	Name           string `json:"name"`
+	StatementCount int64  `json:"statementCount"`
 }
 
 type restOrgListResponse struct {
@@ -185,10 +190,10 @@ func RestListOrgs(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			err  error
 		)
 		if claims.Role == "admin" || claims.Role == "owner" {
-			rows, err = db.Query(ctx, `SELECT id, slug, name FROM organisations ORDER BY name ASC`)
+			rows, err = db.Query(ctx, `SELECT id, slug, name, statement_count FROM organisations ORDER BY name ASC`)
 		} else {
 			rows, err = db.Query(ctx, `
-				SELECT o.id, o.slug, o.name
+				SELECT o.id, o.slug, o.name, o.statement_count
 				FROM organisations o
 				JOIN org_memberships om ON om.org_id = o.id
 				WHERE om.user_id = $1::uuid
@@ -204,7 +209,7 @@ func RestListOrgs(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		items := make([]restOrg, 0)
 		for rows.Next() {
 			var o restOrg
-			if err := rows.Scan(&o.ID, &o.Slug, &o.Name); err != nil {
+			if err := rows.Scan(&o.ID, &o.Slug, &o.Name, &o.StatementCount); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan orgs failed"})
 				return
 			}
@@ -353,7 +358,7 @@ func RestListLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		rows, err := db.Query(ctx, `
-				SELECT l.id, l.project_id, l.name, ds.id, ds.name, l.created_at
+				SELECT l.id, l.project_id, l.name, ds.id, ds.name, l.statement_count, l.created_at
 				FROM lrs l
 				JOIN data_stores ds ON ds.id = l.data_store_id
 				JOIN projects p ON p.id = l.project_id
@@ -370,7 +375,7 @@ func RestListLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		items := make([]restLRS, 0, 16)
 		for rows.Next() {
 			var item restLRS
-			if err := rows.Scan(&item.ID, &item.ProjectID, &item.Name, &item.DataStoreID, &item.DataStoreName, &item.CreatedAt); err != nil {
+			if err := rows.Scan(&item.ID, &item.ProjectID, &item.Name, &item.DataStoreID, &item.DataStoreName, &item.StatementCount, &item.CreatedAt); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan learning record stores failed"})
 				return
 			}
@@ -430,6 +435,7 @@ func RestListClients(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 				c.lrs_id,
 				l.name AS lrs_name,
 				c.name,
+				c.statement_count,
 				c.note,
 				c.key_id,
 				c.scopes::text,
@@ -469,6 +475,7 @@ func RestListClients(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 				&c.LRSID,
 				&c.LRSName,
 				&c.Name,
+				&c.StatementCount,
 				&c.Note,
 				&c.KeyID,
 				&scopesText,
@@ -590,6 +597,7 @@ func RestCreateClient(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		out.KeyID = keyID
 		out.Secret = secret
 		out.Scopes = scopes
+		out.StatementCount = 0
 		out.ExpiresAt = expiresAt
 		out.UserIDs = userIDs
 		err = tx.QueryRow(ctx, `
@@ -772,7 +780,7 @@ func RestListProjects(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		rows, err := db.Query(ctx, `
-			SELECT p.id, p.slug, p.name, p.description, p.created_at
+			SELECT p.id, p.slug, p.name, p.description, p.statement_count, p.created_at
 			FROM projects p
 			JOIN organisations o ON o.id = p.org_id
 			WHERE o.slug = $1
@@ -787,7 +795,7 @@ func RestListProjects(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		items := make([]restProject, 0, 8)
 		for rows.Next() {
 			var p restProject
-			if err := rows.Scan(&p.ID, &p.Slug, &p.Name, &p.Description, &p.CreatedAt); err != nil {
+			if err := rows.Scan(&p.ID, &p.Slug, &p.Name, &p.Description, &p.StatementCount, &p.CreatedAt); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan projects failed"})
 				return
 			}
@@ -845,8 +853,8 @@ func RestCreateProject(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		err := db.QueryRow(ctx, `
 			INSERT INTO projects (org_id, slug, name, description)
 			VALUES ($1, $2, $3, $4)
-			RETURNING id, slug, name, description, created_at
-		`, orgID, generatedSlug, req.Name, description).Scan(&out.ID, &out.Slug, &out.Name, &out.Description, &out.CreatedAt)
+			RETURNING id, slug, name, description, statement_count, created_at
+		`, orgID, generatedSlug, req.Name, description).Scan(&out.ID, &out.Slug, &out.Name, &out.Description, &out.StatementCount, &out.CreatedAt)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create project failed"})
 			return
@@ -1004,6 +1012,7 @@ func RestCreateLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		out.Name = req.Name
 		out.DataStoreID = req.DataStoreID
 		out.DataStoreName = dsName
+		out.StatementCount = 0
 
 		err = tx.QueryRow(ctx, `
 			INSERT INTO lrs (id, project_id, name, data_store_id)

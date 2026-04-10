@@ -31,6 +31,12 @@ export function StatementDetailModal({
             <div className="text-xs text-slate-500">{detail?.id ?? ""}</div>
             <div className="flex items-center gap-2">
                 <button
+                    onClick={onClose}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                    Close
+                </button>
+                <button
                     onClick={onExport}
                     disabled={!detail || !canExport}
                     className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
@@ -51,20 +57,20 @@ export function StatementDetailModal({
     );
 
     return (
-        <Modal open={open} onClose={onClose} title="Statement Details" footer={footer}>
+        <Modal open={open} onClose={onClose} title="Statement Details" footer={footer} maxWidth="max-w-7xl" showCloseButton={false}>
             {loading && <div className="text-sm text-slate-500 py-4">Loading...</div>}
             {error && <div className="text-sm text-red-600 py-2">{error}</div>}
             {!loading && detail && (
-                <div className="grid grid-cols-[1fr_1fr] gap-6">
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] gap-6">
                     <div>
                         <div className="text-sm font-semibold text-slate-700 mb-2">Raw</div>
-                        <pre className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700 overflow-auto max-h-[60vh]">
+                        <pre className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700 overflow-auto max-h-[70vh]">
                             {JSON.stringify(detail.raw, null, 2)}
                         </pre>
                     </div>
                     <div>
                         <div className="text-sm font-semibold text-slate-700 mb-2">Tree</div>
-                        <div className="max-h-[60vh] overflow-auto">
+                        <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
                             <JSONTree data={detail.raw} />
                         </div>
                     </div>

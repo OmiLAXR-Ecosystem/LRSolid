@@ -36,8 +36,11 @@ type connectionStatement struct {
 
 func ConnectionStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tenant := store.TenantID(cfg.DefaultTenant)
+		tenant := store.TenantID("")
 		q := r.URL.Query()
+		if lrsID := q.Get("lrs"); lrsID != "" {
+			tenant = store.TenantID(lrsID)
+		}
 
 		first := parseLimit(q.Get("first"), 25, cfg.MaxPageLimit)
 		after := q.Get("after")

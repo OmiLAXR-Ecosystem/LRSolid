@@ -4,6 +4,7 @@ export type RestLRS = {
   name: string;
   dataStoreId: string;
   dataStoreName: string;
+  statementCount?: number;
 };
 
 export type RestLRSResponse = {
@@ -16,6 +17,7 @@ export type RestClient = {
   lrsId?: string | null;
   lrsName?: string | null;
   name: string;
+  statementCount?: number;
   note?: string | null;
   keyId: string;
   scopes: Record<string, boolean>;
@@ -47,6 +49,7 @@ export type CreateClientResponse = {
   lrsId?: string | null;
   lrsName?: string | null;
   name: string;
+  statementCount?: number;
   note?: string | null;
   keyId: string;
   secret: string;

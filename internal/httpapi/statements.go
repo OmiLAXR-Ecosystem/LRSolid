@@ -1,9 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/SGoerzen/LRSolid/internal/config"
@@ -20,31 +25,105 @@ type postStatementsRequest struct {
 func PostStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tenant := store.TenantID(tenantFromRequest(r.Context(), cfg))
+		clientID := clientIDFromRequest(r.Context())
 
-		var req postStatementsRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		rawList, err := parseStatementsPayload(r)
+		if err != nil {
 			http.Error(w, "invalid json", http.StatusBadRequest)
 			return
 		}
-
-		var rawList []json.RawMessage
-		if len(req.Statements) > 0 {
-			rawList = req.Statements
-		} else if len(req.Statement) > 0 {
-			rawList = []json.RawMessage{req.Statement}
-		} else {
+		if len(rawList) == 0 {
 			http.Error(w, "missing statement(s)", http.StatusBadRequest)
 			return
 		}
 
-		if err := svc.IngestStatements(r.Context(), tenant, rawList); err != nil {
+		ids, err := svc.IngestStatements(r.Context(), tenant, clientID, rawList)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		w.WriteHeader(http.StatusAccepted)
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "accepted"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(ids)
 	}
+}
+
+func parseStatementsPayload(r *http.Request) ([]json.RawMessage, error) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 {
+		return nil, nil
+	}
+
+	// xAPI-compatible: raw array body.
+	var arr []json.RawMessage
+	if err := json.Unmarshal(body, &arr); err == nil {
+		if len(arr) == 0 {
+			return nil, nil
+		}
+		return arr, nil
+	}
+
+	// JSON object body: either wrapper ({statement|statements}) or a raw statement object.
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(body, &obj); err == nil {
+		if raw, ok := obj["statements"]; ok {
+			var wrapped []json.RawMessage
+			if err := json.Unmarshal(raw, &wrapped); err != nil {
+				return nil, fmt.Errorf("invalid statements wrapper: %w", err)
+			}
+			return wrapped, nil
+		}
+		if raw, ok := obj["statement"]; ok {
+			return []json.RawMessage{raw}, nil
+		}
+		// Treat any other JSON object as a single raw statement (xAPI spec shape).
+		return []json.RawMessage{json.RawMessage(body)}, nil
+	}
+
+	// Compatibility fallback (TinCan/legacy): statement(s)=<json>, even if
+	// Content-Type is missing or incorrect.
+	if bytes.Contains(body, []byte("statement=")) || bytes.Contains(body, []byte("statements=")) {
+		form, err := url.ParseQuery(string(body))
+		if err == nil {
+			if s := strings.TrimSpace(form.Get("statement")); s != "" {
+				return []json.RawMessage{json.RawMessage(s)}, nil
+			}
+			if s := strings.TrimSpace(form.Get("statements")); s != "" {
+				var wrapped []json.RawMessage
+				if err := json.Unmarshal([]byte(s), &wrapped); err != nil {
+					return nil, fmt.Errorf("invalid form statements: %w", err)
+				}
+				return wrapped, nil
+			}
+		}
+	}
+
+	// Fallback for proper form-encoded payloads.
+	ct := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.Contains(ct, "application/x-www-form-urlencoded") {
+		form, err := url.ParseQuery(string(body))
+		if err != nil {
+			return nil, fmt.Errorf("invalid form data: %w", err)
+		}
+		if s := strings.TrimSpace(form.Get("statement")); s != "" {
+			return []json.RawMessage{json.RawMessage(s)}, nil
+		}
+		if s := strings.TrimSpace(form.Get("statements")); s != "" {
+			var wrapped []json.RawMessage
+			if err := json.Unmarshal([]byte(s), &wrapped); err != nil {
+				return nil, fmt.Errorf("invalid form statements: %w", err)
+			}
+			return wrapped, nil
+		}
+		return nil, nil
+	}
+
+	return nil, fmt.Errorf("invalid json payload")
 }
 
 func GetStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {

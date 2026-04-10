@@ -44,6 +44,7 @@ type Statement struct {
 	ID        StatementID
 	StoredAt  time.Time // when the LRS stored it (used for since/until + stable paging)
 	Timestamp *time.Time
+	ClientID  *string
 
 	ActorMBox   *string // e.g., "mailto:alice@example.org"
 	ActorSHA256 *string // optional: derived canonical hash for privacy-friendly queries

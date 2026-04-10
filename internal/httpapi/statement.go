@@ -23,9 +23,12 @@ type statementDetailResponse struct {
 	Raw       json.RawMessage `json:"raw"`
 }
 
-func StatementByID(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
+func StatementByID(_ config.Config, svc *lrs.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tenant := store.TenantID(cfg.DefaultTenant)
+		tenant := store.TenantID("")
+		if lrsID := r.URL.Query().Get("lrs"); lrsID != "" {
+			tenant = store.TenantID(lrsID)
+		}
 		id := chi.URLParam(r, "id")
 		if id == "" {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "missing id"})

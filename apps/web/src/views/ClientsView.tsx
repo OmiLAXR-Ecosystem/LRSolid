@@ -66,14 +66,14 @@ function CopyButton({ value, label }: { value: string; label?: string }) {
 
 function CreatedCredentials({ created }: { created: CreateClientResponse }) {
   const base = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ?? window.location.origin;
-  const statementsUrl = `${base}/xapi/statements`;
+  const xapiEndpoint = `${base}/xapi`;
   const basicToken = `Basic ${btoa(`${created.keyId}:${created.secret}`)}`;
 
-  const allText = `Endpoint URL: ${statementsUrl}\nKey: ${created.keyId}\nSecret: ${created.secret}\nAuthorization: ${basicToken}`;
+  const allText = `Endpoint URL: ${xapiEndpoint}\nKey: ${created.keyId}\nSecret: ${created.secret}\nAuthorization: ${basicToken}`;
 
   const downloadCredentials = () => {
     const json = JSON.stringify({
-      endpoint: statementsUrl,
+      endpoint: xapiEndpoint,
       username: created.keyId,
       password: created.secret,
     }, null, 2);
@@ -108,8 +108,8 @@ function CreatedCredentials({ created }: { created: CreateClientResponse }) {
       <div className="space-y-1">
         <div className="text-xs font-semibold text-green-900 uppercase tracking-wide">Endpoint URL</div>
         <div className="flex items-center gap-1 rounded-md bg-white/70 border border-green-200 px-3 py-2 font-mono text-xs text-slate-700 break-all">
-          <span className="flex-1">{statementsUrl}</span>
-          <CopyButton value={statementsUrl} />
+          <span className="flex-1">{xapiEndpoint}</span>
+          <CopyButton value={xapiEndpoint} />
         </div>
       </div>
 

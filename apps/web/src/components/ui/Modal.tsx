@@ -7,9 +7,10 @@ type ModalProps = {
     footer?: ReactNode;
     children: ReactNode;
     maxWidth?: string;
+    showCloseButton?: boolean;
 };
 
-export function Modal({ open, onClose, title, footer, children, maxWidth = "max-w-5xl" }: ModalProps) {
+export function Modal({ open, onClose, title, footer, children, maxWidth = "max-w-5xl", showCloseButton = true }: ModalProps) {
     useEffect(() => {
         if (!open) return;
         const handler = (e: KeyboardEvent) => {
@@ -26,9 +27,11 @@ export function Modal({ open, onClose, title, footer, children, maxWidth = "max-
             <div className={`w-[90vw] ${maxWidth} rounded-2xl bg-white shadow-lg ring-1 ring-slate-200`}>
                 <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
                     <div className="text-lg font-semibold text-slate-800">{title}</div>
-                    <button className="text-slate-500 hover:text-slate-700 text-xl leading-none" onClick={onClose}>
-                        ✕
-                    </button>
+                    {showCloseButton && (
+                        <button className="text-slate-500 hover:text-slate-700 text-xl leading-none" onClick={onClose}>
+                            ✕
+                        </button>
+                    )}
                 </div>
                 <div className="px-6 py-4">{children}</div>
                 {footer && (

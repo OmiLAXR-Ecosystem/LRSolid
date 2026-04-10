@@ -19,6 +19,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
+	r.Use(middleware.StripSlashes)
 	r.Use(middleware.Heartbeat("/healthz"))
 
 	// Public routes
@@ -35,10 +36,8 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 	// xAPI routes: require API client credentials (HTTP Basic key_id:secret)
 	r.Route("/xapi", func(r chi.Router) {
 		r.Use(XAPIClientAuth(cfg, db))
-		r.Route("/statements", func(r chi.Router) {
-			r.Post("/", PostStatements(cfg, svc))
-			r.Get("/", GetStatements(cfg, svc))
-		})
+		r.Post("/statements", PostStatements(cfg, svc))
+		r.Get("/statements", GetStatements(cfg, svc))
 	})
 
 	// Protected routes — require valid session cookie
@@ -61,6 +60,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 
 				// Org-scoped endpoints
 				r.Route("/{org}", func(r chi.Router) {
+					r.Get("/dashboard", AdminDashboard(cfg, db))
 					r.Get("/user", RestListUsers(cfg, db))
 					r.Get("/user/count", RestCountUsers(cfg, db))
 					r.Get("/project", RestListProjects(cfg, db))
