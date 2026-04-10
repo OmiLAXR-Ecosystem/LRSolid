@@ -7,8 +7,10 @@ import { ApiError } from "../api/client";
 import { createProject, deleteProject, fetchProjects } from "../api/lrs";
 import type { RestProject } from "../types/lrs";
 import { useConfirm } from "../contexts/ConfirmContext";
+import { useOrg } from "../contexts/OrgContext";
 
 export function ProjectsView() {
+  const { currentOrg } = useOrg();
   const [allItems, setAllItems] = useState<RestProject[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,15 +25,16 @@ export function ProjectsView() {
   const [description, setDescription] = useState("");
 
   useEffect(() => {
+    if (!currentOrg) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchProjects()
+    fetchProjects(currentOrg)
       .then((data) => { if (!cancelled) setAllItems(data.items ?? []); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Request failed"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [reloadTick]);
+  }, [reloadTick, currentOrg]);
 
   const items = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -55,7 +58,7 @@ export function ProjectsView() {
     setSubmitting(true);
     setCreateError(null);
     try {
-      await createProject({ name: name.trim(), description: description.trim() || undefined });
+      await createProject(currentOrg, { name: name.trim(), description: description.trim() || undefined });
       setCreateOpen(false);
       setReloadTick((v) => v + 1);
     } catch (err) {
@@ -74,7 +77,7 @@ export function ProjectsView() {
     });
     if (!ok) return;
     try {
-      await deleteProject(project.id);
+      await deleteProject(currentOrg, project.id);
       setReloadTick((v) => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");

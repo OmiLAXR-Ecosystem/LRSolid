@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
 )
 
@@ -129,10 +131,108 @@ type restDataStoreListResponse struct {
 	Items []restDataStore `json:"items"`
 }
 
+type restOrg struct {
+	ID   string `json:"id"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+}
+
+type restOrgListResponse struct {
+	Items []restOrg `json:"items"`
+}
+
+// validateOrgAccess checks that the current user may access the given org slug.
+// Admins and owners bypass the membership check.
+func validateOrgAccess(ctx context.Context, db *pgxpool.Pool, claims auth.Claims, orgSlug string) error {
+	if claims.Role == "admin" || claims.Role == "owner" {
+		return nil
+	}
+	var exists bool
+	if err := db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM org_memberships om
+			JOIN organisations o ON o.id = om.org_id
+			WHERE om.user_id = $1::uuid AND o.slug = $2
+		)
+	`, claims.UserID, orgSlug).Scan(&exists); err != nil {
+		return fmt.Errorf("check org access failed")
+	}
+	if !exists {
+		return fmt.Errorf("access denied")
+	}
+	return nil
+}
+
+// orgFromRequest extracts the {org} URL param, falling back to cfg.DefaultOrg.
+func orgFromRequest(r *http.Request, cfg config.Config) string {
+	if s := chi.URLParam(r, "org"); s != "" {
+		return s
+	}
+	return cfg.DefaultOrg
+}
+
+func RestListOrgs(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+
+		var (
+			rows pgx.Rows
+			err  error
+		)
+		if claims.Role == "admin" || claims.Role == "owner" {
+			rows, err = db.Query(ctx, `SELECT id, slug, name FROM organisations ORDER BY name ASC`)
+		} else {
+			rows, err = db.Query(ctx, `
+				SELECT o.id, o.slug, o.name
+				FROM organisations o
+				JOIN org_memberships om ON om.org_id = o.id
+				WHERE om.user_id = $1::uuid
+				ORDER BY o.name ASC
+			`, claims.UserID)
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "list orgs failed"})
+			return
+		}
+		defer rows.Close()
+
+		items := make([]restOrg, 0)
+		for rows.Next() {
+			var o restOrg
+			if err := rows.Scan(&o.ID, &o.Slug, &o.Name); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan orgs failed"})
+				return
+			}
+			items = append(items, o)
+		}
+		if err := rows.Err(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "read orgs failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, restOrgListResponse{Items: items})
+	}
+}
+
 func RestListUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		orgID, err := getOrgID(ctx, db, cfg.DefaultOrg)
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
+		orgID, err := getOrgID(ctx, db, orgSlug)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup org failed"})
 			return
@@ -210,7 +310,17 @@ func RestListUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 func RestCountUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		orgID, err := getOrgID(ctx, db, cfg.DefaultOrg)
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
+		orgID, err := getOrgID(ctx, db, orgSlug)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup org failed"})
 			return
@@ -231,7 +341,18 @@ func RestCountUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 
 func RestListLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query(r.Context(), `
+		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
+		rows, err := db.Query(ctx, `
 				SELECT l.id, l.project_id, l.name, ds.id, ds.name, l.created_at
 				FROM lrs l
 				JOIN data_stores ds ON ds.id = l.data_store_id
@@ -239,7 +360,7 @@ func RestListLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 				JOIN organisations o ON o.id = p.org_id
 				WHERE o.slug = $1
 				ORDER BY l.name ASC, l.id ASC
-			`, cfg.DefaultOrg)
+			`, orgSlug)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "list learning record stores failed"})
 			return
@@ -267,12 +388,22 @@ func RestListLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 func RestListClients(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
 		q := r.URL.Query()
 		limit := parseLimit(q.Get("limit"), 25, 200)
 		offset := parseOffset(q.Get("offset"))
 		search := strings.TrimSpace(q.Get("q"))
 
-		args := []any{cfg.DefaultOrg}
+		args := []any{orgSlug}
 		where := "o.slug = $1"
 		if search != "" {
 			args = append(args, "%"+search+"%")
@@ -372,6 +503,16 @@ func RestListClients(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 func RestCreateClient(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
 
 		var req createClientRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -417,13 +558,13 @@ func RestCreateClient(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer tx.Rollback(ctx)
 
-		projectID, lrsName, err := resolveProjectForLRS(ctx, tx, cfg.DefaultOrg, lrsID)
+		projectID, lrsName, err := resolveProjectForLRS(ctx, tx, orgSlug, lrsID)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
 			return
 		}
 
-		userIDs, err := validateOrgUsers(ctx, tx, cfg.DefaultOrg, req.UserIDs)
+		userIDs, err := validateOrgUsers(ctx, tx, orgSlug, req.UserIDs)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
 			return
@@ -481,19 +622,30 @@ func RestCreateClient(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 
 func RestDeleteClient(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
 		id := strings.TrimSpace(chi.URLParam(r, "id"))
 		if id == "" {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "client id required"})
 			return
 		}
-		ct, err := db.Exec(r.Context(), `
+		ct, err := db.Exec(ctx, `
 			DELETE FROM clients c
 			USING projects p, organisations o
 			WHERE c.id = $1
 			  AND c.project_id = p.id
 			  AND p.org_id = o.id
 			  AND o.slug = $2
-		`, id, cfg.DefaultOrg)
+		`, id, orgSlug)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "delete client failed"})
 			return
@@ -608,13 +760,24 @@ func restNotImplemented() http.HandlerFunc {
 
 func RestListProjects(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query(r.Context(), `
+		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
+		rows, err := db.Query(ctx, `
 			SELECT p.id, p.slug, p.name, p.description, p.created_at
 			FROM projects p
 			JOIN organisations o ON o.id = p.org_id
 			WHERE o.slug = $1
 			ORDER BY p.name ASC
-		`, cfg.DefaultOrg)
+		`, orgSlug)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "list projects failed"})
 			return
@@ -642,6 +805,16 @@ func RestListProjects(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 func RestCreateProject(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
 
 		var req createProjectRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -663,7 +836,7 @@ func RestCreateProject(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		generatedSlug := hex.EncodeToString(slugBytes)
 
 		var orgID string
-		if err := db.QueryRow(ctx, `SELECT id FROM organisations WHERE slug = $1`, cfg.DefaultOrg).Scan(&orgID); err != nil {
+		if err := db.QueryRow(ctx, `SELECT id FROM organisations WHERE slug = $1`, orgSlug).Scan(&orgID); err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "organisation not found"})
 			return
 		}
@@ -685,19 +858,30 @@ func RestCreateProject(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 
 func RestDeleteProject(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
 		id := strings.TrimSpace(chi.URLParam(r, "id"))
 		if id == "" {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "project id required"})
 			return
 		}
 
-		ct, err := db.Exec(r.Context(), `
+		ct, err := db.Exec(ctx, `
 			DELETE FROM projects p
 			USING organisations o
 			WHERE p.id = $1
 			  AND p.org_id = o.id
 			  AND o.slug = $2
-		`, id, cfg.DefaultOrg)
+		`, id, orgSlug)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "delete project failed"})
 			return
@@ -746,6 +930,16 @@ func RestListDataStores(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 func RestCreateLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
 
 		var req createLRSRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -781,7 +975,7 @@ func RestCreateLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			SELECT p.id FROM projects p
 			JOIN organisations o ON o.id = p.org_id
 			WHERE p.id = $1 AND o.slug = $2
-		`, req.ProjectID, cfg.DefaultOrg).Scan(&projectID)
+		`, req.ProjectID, orgSlug).Scan(&projectID)
 		if err == pgx.ErrNoRows {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "project not found"})
 			return
@@ -832,20 +1026,31 @@ func RestCreateLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 
 func RestDeleteLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
 		id := strings.TrimSpace(chi.URLParam(r, "id"))
 		if id == "" {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "lrs id required"})
 			return
 		}
 
-		ct, err := db.Exec(r.Context(), `
+		ct, err := db.Exec(ctx, `
 			DELETE FROM lrs l
 			USING projects p, organisations o
 			WHERE l.id = $1
 			  AND l.project_id = p.id
 			  AND p.org_id = o.id
 			  AND o.slug = $2
-		`, id, cfg.DefaultOrg)
+		`, id, orgSlug)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "delete learning record store failed"})
 			return

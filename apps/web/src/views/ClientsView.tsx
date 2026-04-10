@@ -10,6 +10,7 @@ import { Modal } from "../components/ui/Modal";
 import { ApiError } from "../api/client";
 import { createClient, deleteClient, fetchClients, fetchLRS } from "../api/clients";
 import { fetchUsers } from "../api/users";
+import { useOrg } from "../contexts/OrgContext";
 import type { CreateClientResponse, RestClient, RestLRS } from "../types/client";
 import type { RestUser } from "../types/user";
 import { useConfirm } from "../contexts/ConfirmContext";
@@ -144,6 +145,7 @@ function CreatedCredentials({ created }: { created: CreateClientResponse }) {
 }
 
 export function ClientsView() {
+  const { currentOrg } = useOrg();
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(25);
   const [page, setPage] = useState(0);
@@ -172,10 +174,11 @@ export function ClientsView() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
 
   const fetchList = async () => {
+    if (!currentOrg) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchClients({
+      const data = await fetchClients(currentOrg, {
         limit,
         offset: page * limit,
         q: query.trim() || undefined,
@@ -192,7 +195,7 @@ export function ClientsView() {
   useEffect(() => {
     void fetchList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [limit, page, query, reloadTick]);
+  }, [limit, page, query, reloadTick, currentOrg]);
 
   useEffect(() => {
     setPage(0);
@@ -205,8 +208,8 @@ export function ClientsView() {
       setUsersLoading(true);
       try {
         const [lrsRes, usersRes] = await Promise.all([
-          fetchLRS(),
-          fetchUsers({ limit: 200, offset: 0, q: userSearch.trim() || undefined, role: "All" }),
+          fetchLRS(currentOrg),
+          fetchUsers(currentOrg, { limit: 200, offset: 0, q: userSearch.trim() || undefined, role: "All" }),
         ]);
         if (cancelled) return;
         setLrsItems(lrsRes.items ?? []);
@@ -275,7 +278,7 @@ export function ClientsView() {
     setSubmitting(true);
     setCreateError(null);
     try {
-      const result = await createClient({
+      const result = await createClient(currentOrg, {
         name: name.trim(),
         lrsId,
         note: note.trim() || undefined,
@@ -310,7 +313,7 @@ export function ClientsView() {
     });
     if (!ok) return;
     try {
-      await deleteClient(client.id);
+      await deleteClient(currentOrg, client.id);
       setReloadTick((v) => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");

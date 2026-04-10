@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { fetchUsers } from "../api/users";
+import { useOrg } from "../contexts/OrgContext";
 import type { RestUser } from "../types/user";
 
 export function useUsers() {
+    const { currentOrg } = useOrg();
     const [query, setQuery] = useState("");
     const [role, setRole] = useState("All");
     const [limit, setLimit] = useState(25);
@@ -14,15 +16,16 @@ export function useUsers() {
 
     useEffect(() => {
         setPage(0);
-    }, [query, role, limit]);
+    }, [query, role, limit, currentOrg]);
 
     useEffect(() => {
+        if (!currentOrg) return;
         let cancelled = false;
         const run = async () => {
             setLoading(true);
             setError(null);
             try {
-                const data = await fetchUsers({
+                const data = await fetchUsers(currentOrg, {
                     limit,
                     offset: page * limit,
                     q: query.trim() || undefined,
@@ -40,7 +43,7 @@ export function useUsers() {
         };
         void run();
         return () => { cancelled = true; };
-    }, [limit, page, query, role]);
+    }, [limit, page, query, role, currentOrg]);
 
     const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
     const pageStart = total === 0 ? 0 : page * limit + 1;

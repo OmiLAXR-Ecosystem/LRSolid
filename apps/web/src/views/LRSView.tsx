@@ -8,8 +8,10 @@ import { ApiError } from "../api/client";
 import { createLRS, deleteLRS, fetchDataStores, fetchLRSList, fetchProjects } from "../api/lrs";
 import type { RestDataStore, RestLRS, RestProject } from "../types/lrs";
 import { useConfirm } from "../contexts/ConfirmContext";
+import { useOrg } from "../contexts/OrgContext";
 
 export function LRSView() {
+  const { currentOrg } = useOrg();
   const [allItems, setAllItems] = useState<RestLRS[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,21 +30,22 @@ export function LRSView() {
   const [dataStores, setDataStores] = useState<RestDataStore[]>([]);
 
   useEffect(() => {
+    if (!currentOrg) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchLRSList()
+    fetchLRSList(currentOrg)
       .then((data) => { if (!cancelled) setAllItems(data.items ?? []); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Request failed"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [reloadTick]);
+  }, [reloadTick, currentOrg]);
 
   useEffect(() => {
-    if (!createOpen) return;
+    if (!createOpen || !currentOrg) return;
     let cancelled = false;
     setFormLoading(true);
-    Promise.all([fetchProjects(), fetchDataStores()])
+    Promise.all([fetchProjects(currentOrg), fetchDataStores(currentOrg)])
       .then(([pRes, dsRes]) => {
         if (cancelled) return;
         setProjects(pRes.items ?? []);
@@ -53,7 +56,7 @@ export function LRSView() {
       .catch((err) => { if (!cancelled) setCreateError(err instanceof Error ? err.message : "Failed to load form data"); })
       .finally(() => { if (!cancelled) setFormLoading(false); });
     return () => { cancelled = true; };
-  }, [createOpen]);
+  }, [createOpen, currentOrg]);
 
   const items = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -80,7 +83,7 @@ export function LRSView() {
     setSubmitting(true);
     setCreateError(null);
     try {
-      await createLRS({ name: name.trim(), projectId, dataStoreId });
+      await createLRS(currentOrg, { name: name.trim(), projectId, dataStoreId });
       setCreateOpen(false);
       setReloadTick((v) => v + 1);
     } catch (err) {
@@ -99,7 +102,7 @@ export function LRSView() {
     });
     if (!ok) return;
     try {
-      await deleteLRS(lrs.id);
+      await deleteLRS(currentOrg, lrs.id);
       setReloadTick((v) => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");

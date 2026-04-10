@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import {
     LayoutDashboard, FileText, Users, BarChart2,
     Database, Store, KeyRound, Search, Bell,
     Settings, Calendar, ChevronDown, LogOut, FolderOpen, ShieldCheck,
+    Building2,
 } from "lucide-react";
 import Logo from "../../assets/LRSolid_Logo.png";
 import { useAuth } from "../../contexts/AuthContext";
+import { useOrg, ALL_ORGS } from "../../contexts/OrgContext";
 
 export type NavKey =
     | "dashboard"
@@ -16,7 +18,8 @@ export type NavKey =
     | "reports"
     | "datasources"
     | "marketplace"
-    | "settings";
+    | "settings"
+    | "organizations";
 
 type AdminShellProps = {
     activeKey: NavKey;
@@ -31,17 +34,21 @@ type NavItem = {
     icon: ReactNode;
 };
 
-const NAV_ITEMS: NavItem[] = [
-    { key: "dashboard",   label: "Dashboard",         href: "#/dashboard",   icon: <LayoutDashboard className="h-5 w-5" /> },
-    { key: "statements",  label: "Statements",         href: "#/statements",  icon: <FileText className="h-5 w-5" /> },
-    { key: "users",       label: "Users",              href: "#/users",       icon: <Users className="h-5 w-5" /> },
-    { key: "clients",     label: "Clients",            href: "#/clients",     icon: <KeyRound className="h-5 w-5" /> },
-    { key: "projects",    label: "Projects",           href: "#/projects",    icon: <FolderOpen className="h-5 w-5" /> },
-    { key: "reports",     label: "Reports",            href: "#/reports",     icon: <BarChart2 className="h-5 w-5" /> },
-    { key: "datasources", label: "Learning Record Stores", href: "#/datasources", icon: <Database className="h-5 w-5" /> },
-];
+function buildNavItems(org: string): NavItem[] {
+    return [
+        { key: "dashboard",   label: "Dashboard",              href: `#/${org}/dashboard`,   icon: <LayoutDashboard className="h-5 w-5" /> },
+        { key: "statements",  label: "Statements",             href: `#/${org}/statements`,  icon: <FileText className="h-5 w-5" /> },
+        { key: "users",       label: "Users",                  href: `#/${org}/users`,       icon: <Users className="h-5 w-5" /> },
+        { key: "clients",     label: "Clients",                href: `#/${org}/clients`,     icon: <KeyRound className="h-5 w-5" /> },
+        { key: "projects",    label: "Projects",               href: `#/${org}/projects`,    icon: <FolderOpen className="h-5 w-5" /> },
+        { key: "reports",     label: "Reports",                href: `#/${org}/reports`,     icon: <BarChart2 className="h-5 w-5" /> },
+        { key: "datasources", label: "Learning Record Stores", href: `#/${org}/datasources`, icon: <Database className="h-5 w-5" /> },
+    ];
+}
 
-const ORG_OPTIONS = ["LRSolid", "Acme Learning", "Demo Org"];
+const ALL_ORGS_NAV: NavItem[] = [
+    { key: "organizations", label: "Organizations", href: `#/${ALL_ORGS}/organizations`, icon: <Building2 className="h-5 w-5" /> },
+];
 
 function SidebarItem({ item, active }: { item: NavItem; active: boolean }) {
     return (
@@ -60,10 +67,14 @@ function SidebarItem({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShellProps) {
-    const [org, setOrg] = useState(ORG_OPTIONS[0]);
-    const isAdmin = import.meta.env.VITE_IS_ADMIN !== "false";
     const { state, logout } = useAuth();
+    const { orgs, currentOrg, setOrg } = useOrg();
     const user = state.status === "authenticated" ? state.user : null;
+
+    const canSeeAllOrgs = user?.role === "admin" || user?.role === "owner";
+    const isAllOrgs = currentOrg === ALL_ORGS;
+    const navItems = isAllOrgs ? ALL_ORGS_NAV : buildNavItems(currentOrg);
+    const marketplaceHref = isAllOrgs ? `#/${ALL_ORGS}/organizations` : `#/${currentOrg}/marketplace`;
 
     return (
         <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -78,35 +89,39 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                             <div className="text-[11px] font-semibold uppercase tracking-wide text-white/70">Organization</div>
                             <div className="relative mt-2">
                                 <select
-                                    value={org}
+                                    value={currentOrg}
                                     onChange={(e) => setOrg(e.target.value)}
                                     className="w-full appearance-none rounded-xl bg-white/10 px-3 py-2 text-sm text-white ring-1 ring-white/20 focus:outline-none focus:ring-2 focus:ring-white/50"
                                 >
-                                    {ORG_OPTIONS.map((o) => (
-                                        <option key={o} value={o} className="text-slate-900">{o}</option>
+                                    {orgs.map((o) => (
+                                        <option key={o.slug} value={o.slug} className="text-slate-900">{o.name}</option>
                                     ))}
+                                    {canSeeAllOrgs && (
+                                        <option value={ALL_ORGS} className="text-slate-900 font-semibold">— All Organizations —</option>
+                                    )}
                                 </select>
                                 <ChevronDown className="h-4 w-4 text-white/70 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                             </div>
                         </div>
 
                         <nav className="px-4 py-4 space-y-2">
-                            {NAV_ITEMS.map((item) => (
+                            {navItems.map((item) => (
                                 <SidebarItem key={item.key} item={item} active={activeKey === item.key} />
                             ))}
                         </nav>
 
-                        <div className="mt-auto p-4">
-                            <a
-                                href="#/marketplace"
-                                aria-current={activeKey === "marketplace" ? "page" : undefined}
-                                className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
-                            >
-                                <Store className="h-5 w-5" />
-                                Plugin Marketplace
-                            </a>
-                        </div>
-
+                        {!isAllOrgs && (
+                            <div className="mt-auto p-4">
+                                <a
+                                    href={marketplaceHref}
+                                    aria-current={activeKey === "marketplace" ? "page" : undefined}
+                                    className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
+                                >
+                                    <Store className="h-5 w-5" />
+                                    Plugin Marketplace
+                                </a>
+                            </div>
+                        )}
                     </aside>
 
                     <main className="space-y-6">
@@ -129,9 +144,9 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                                 <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
                                     <Calendar className="h-5 w-5 text-slate-600" />
                                 </button>
-                                {isAdmin && (
+                                {canSeeAllOrgs && (
                                     <a
-                                        href="#/settings"
+                                        href={`#/${currentOrg}/settings`}
                                         title="Admin Panel"
                                         aria-current={activeKey === "settings" ? "page" : undefined}
                                         className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center"
