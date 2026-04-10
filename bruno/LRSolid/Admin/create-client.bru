@@ -1,0 +1,31 @@
+meta {
+  name: Create Client
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/client
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Cookie: {{sessionCookie}}
+}
+
+body:json {
+  {
+    "name": "bruno-local",
+    "scopes": {
+      "statements:read": true,
+      "statements:write": true
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+  followRedirects: true
+}

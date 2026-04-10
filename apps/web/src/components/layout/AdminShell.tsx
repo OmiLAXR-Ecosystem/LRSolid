@@ -36,7 +36,7 @@ const NAV_ITEMS: NavItem[] = [
     { key: "users",       label: "Users",              href: "#/users",       icon: <Users className="h-5 w-5" /> },
     { key: "clients",     label: "Clients",            href: "#/clients",     icon: <KeyRound className="h-5 w-5" /> },
     { key: "reports",     label: "Reports",            href: "#/reports",     icon: <BarChart2 className="h-5 w-5" /> },
-    { key: "datasources", label: "Data Stores",        href: "#/datasources", icon: <Database className="h-5 w-5" /> },
+    { key: "datasources", label: "Learning Record Stores", href: "#/datasources", icon: <Database className="h-5 w-5" /> },
     { key: "marketplace", label: "Plugin Marketplace", href: "#/marketplace", icon: <Store className="h-5 w-5" /> },
 ];
 

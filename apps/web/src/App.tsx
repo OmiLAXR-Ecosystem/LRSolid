@@ -5,6 +5,7 @@ import { AdminShell, type NavKey } from "./components/layout/AdminShell";
 import { LRSolidDashboard } from "./LRSolidDashboard";
 import { StatementsView } from "./views/StatementsView";
 import { UsersView } from "./views/UsersView";
+import { ClientsView } from "./views/ClientsView";
 import { LoginView } from "./views/LoginView";
 import { PlaceholderView } from "./views/PlaceholderView";
 
@@ -18,9 +19,9 @@ const ROUTES: Record<string, RouteConfig> = {
     dashboard:   { activeKey: "dashboard",   searchPlaceholder: "Search...",            content: <LRSolidDashboard /> },
     statements:  { activeKey: "statements",  searchPlaceholder: "Search statements...", content: <StatementsView /> },
     users:       { activeKey: "users",       searchPlaceholder: "Search users...",      content: <UsersView /> },
-    clients:     { activeKey: "clients",     searchPlaceholder: "Search clients...",    content: <PlaceholderView title="Clients" /> },
+    clients:     { activeKey: "clients",                                                content: <ClientsView /> },
     reports:     { activeKey: "reports",                                                content: <PlaceholderView title="Reports" /> },
-    datasources: { activeKey: "datasources",                                            content: <PlaceholderView title="Data Stores" /> },
+    datasources: { activeKey: "datasources",                                            content: <PlaceholderView title="Learning Record Stores" /> },
     marketplace: { activeKey: "marketplace",                                            content: <PlaceholderView title="Plugin Marketplace" /> },
     settings:    { activeKey: "settings",                                               content: <PlaceholderView title="Settings" /> },
 };

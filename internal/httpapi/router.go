@@ -32,20 +32,21 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 		r.Post("/logout", Logout())
 	})
 
+	// xAPI routes: require API client credentials (HTTP Basic key_id:secret)
+	r.Route("/xapi", func(r chi.Router) {
+		r.Use(XAPIClientAuth(cfg, db))
+		r.Route("/statements", func(r chi.Router) {
+			r.Post("/", PostStatements(cfg, svc))
+			r.Get("/", GetStatements(cfg, svc))
+		})
+	})
+
 	// Protected routes — require valid session cookie
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(cfg.JWTSecret))
 
 		// Auth: current user
 		r.Get("/api/auth/me", Me())
-
-		// xAPI
-		r.Route("/xapi", func(r chi.Router) {
-			r.Route("/statements", func(r chi.Router) {
-				r.Post("/", PostStatements(cfg, svc))
-				r.Get("/", GetStatements(cfg, svc))
-			})
-		})
 
 		// Connection + REST API
 		r.Route("/api", func(r chi.Router) {
@@ -57,6 +58,10 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 			r.Route("/v1", func(r chi.Router) {
 				r.Get("/user", RestListUsers(cfg, db))
 				r.Get("/user/count", RestCountUsers(cfg, db))
+				r.Get("/lrs", RestListLRS(cfg, db))
+				r.Get("/client", RestListClients(cfg, db))
+				r.Post("/client", RestCreateClient(cfg, db))
+				r.Delete("/client/{id}", RestDeleteClient(cfg, db))
 			})
 
 			r.Route("/aggregation", func(r chi.Router) {

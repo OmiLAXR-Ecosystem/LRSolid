@@ -19,7 +19,7 @@ type postStatementsRequest struct {
 
 func PostStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tenant := store.TenantID(cfg.DefaultTenant)
+		tenant := store.TenantID(tenantFromRequest(r.Context(), cfg))
 
 		var req postStatementsRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -49,7 +49,7 @@ func PostStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 
 func GetStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tenant := store.TenantID(cfg.DefaultTenant)
+		tenant := store.TenantID(tenantFromRequest(r.Context(), cfg))
 
 		q := r.URL.Query()
 		limit := cfg.MaxPageLimit

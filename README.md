@@ -177,8 +177,8 @@ make dev-web   # Vite dev server on :5173
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/xapi/statements` | Ingest a statement or batch of statements |
-| `GET` | `/xapi/statements` | Query statements (actor, verb, activity, since, until, limit) |
+| `POST` | `/xapi/statements` | Ingest a statement or batch of statements (requires client scope `statements:write`) |
+| `GET` | `/xapi/statements` | Query statements (requires client scope `statements:read`) |
 
 ### REST
 
@@ -186,10 +186,33 @@ make dev-web   # Vite dev server on :5173
 |--------|------|-------------|
 | `GET` | `/api/v1/user` | List users (filter: name, email, role) |
 | `GET` | `/api/v1/user/count` | Count users |
+| `GET` | `/api/v1/client` | List API clients |
+| `POST` | `/api/v1/client` | Create API client and return `keyId` + `secret` (secret shown once) |
 | `GET` | `/api/statement/{id}` | Fetch single statement by ID |
 | `GET` | `/api/connection/statement` | Cursor-paginated statement connection (GraphQL-style edges) |
 
-All routes except `/api/auth/login`, `/api/auth/logout`, `/healthz`, and `/docs` require a valid session cookie.
+`/api/*` routes require a valid session cookie. `/xapi/*` routes accept HTTP Basic auth with client `keyId:secret` (and also accept session cookie for compatibility in dev/UI flows).
+
+### xAPI Basic Auth Quick Example
+
+1. Create a client (while logged in with session cookie):
+
+```bash
+curl -sS -X POST http://localhost:8080/api/v1/client \
+  -H 'Content-Type: application/json' \
+  -H 'Cookie: lrsolid_session=YOUR_SESSION_COOKIE' \
+  -d '{"name":"local-cli","scopes":{"statements:read":true,"statements:write":true}}'
+```
+
+2. Use returned `keyId` + `secret` for xAPI:
+
+```bash
+curl -sS -u "YOUR_KEY_ID:YOUR_SECRET" \
+  -H 'Content-Type: application/json' \
+  -H 'X-Experience-API-Version: 1.0.3' \
+  -X POST http://localhost:8080/xapi/statements \
+  -d '{"statement":{"actor":{"mbox":"mailto:sergej@example.org"},"verb":{"id":"http://adlnet.gov/expapi/verbs/experienced","display":{"en-US":"experienced"}},"object":{"id":"https://example.org/activity/intro"}}}'
+```
 
 ---
 
