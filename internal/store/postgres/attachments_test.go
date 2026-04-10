@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/SGoerzen/LRSolid/internal/store"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestAttachments_UpsertGet(t *testing.T) {

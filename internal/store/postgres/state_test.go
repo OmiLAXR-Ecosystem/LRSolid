@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/SGoerzen/LRSolid/internal/store"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestState_PutGetETag(t *testing.T) {
