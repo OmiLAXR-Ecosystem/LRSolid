@@ -513,8 +513,7 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 		}
 
 		filename := "export-" + job.ID + ".ndjson.gz"
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 		w.WriteHeader(http.StatusOK)
 

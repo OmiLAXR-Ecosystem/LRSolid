@@ -113,7 +113,13 @@ export function StatementsView() {
                 targetType: (targetType as "s3" | "gdrive" | "onedrive" | "icloud") || undefined,
                 targetPath: targetPath || undefined,
             });
-            setSuccessMessage(`Export created — ${Math.round((job.estimatedBytes / (1024 * 1024)) * 10) / 10} MB estimated`);
+            const estBytes = job.estimatedBytes;
+            const estLabel = estBytes >= 1024 * 1024
+                ? `${Math.round((estBytes / (1024 * 1024)) * 10) / 10} MB`
+                : estBytes >= 1024
+                ? `${Math.round(estBytes / 1024)} KB`
+                : `${estBytes} B`;
+            setSuccessMessage(`Export created — ~${estLabel} estimated`);
             await loadJobs();
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to create export");
@@ -313,7 +319,11 @@ export function StatementsView() {
                                                     </span>
                                                 </td>
                                                 <td className="px-3 py-2 text-slate-500 text-xs">
-                                                    {Math.round((j.estimatedBytes / (1024 * 1024)) * 10) / 10} MB
+                                                    {j.estimatedBytes >= 1024 * 1024
+                                                        ? `${Math.round((j.estimatedBytes / (1024 * 1024)) * 10) / 10} MB`
+                                                        : j.estimatedBytes >= 1024
+                                                        ? `${Math.round(j.estimatedBytes / 1024)} KB`
+                                                        : `${j.estimatedBytes} B`}
                                                 </td>
                                                 <td className="px-3 py-2 text-slate-500 text-xs">
                                                     {j.targetType ?? "local"}
