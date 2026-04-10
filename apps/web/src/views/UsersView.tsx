@@ -1,34 +1,90 @@
 import { useUsers } from "../hooks/useUsers";
-import { UserFilters } from "../components/users/UserFilters";
-import { UserTable } from "../components/users/UserTable";
+import { Card } from "../components/ui/Card";
+import { FieldLabel } from "../components/ui/FieldLabel";
+import { TextInput } from "../components/ui/TextInput";
+import { SelectInput } from "../components/ui/SelectInput";
+import { Pagination } from "../components/ui/Pagination";
+
+const ROLE_OPTIONS = [
+    { label: "All roles", value: "All" },
+    { label: "Admin", value: "Admin" },
+    { label: "User", value: "User" },
+];
 
 export function UsersView() {
-    const users = useUsers();
+    const u = useUsers();
 
     return (
         <div className="space-y-6">
-            <UserFilters
-                name={users.name}
-                email={users.email}
-                role={users.role}
-                onNameChange={users.setName}
-                onEmailChange={users.setEmail}
-                onRoleChange={users.setRole}
-            />
-            <UserTable
-                items={users.items}
-                loading={users.loading}
-                error={users.error}
-                limit={users.limit}
-                onLimitChange={users.setLimit}
-                page={users.page}
-                totalPages={users.totalPages}
-                pageStart={users.pageStart}
-                pageEnd={users.pageEnd}
-                total={users.total}
-                onPrev={() => users.setPage((p) => Math.max(0, p - 1))}
-                onNext={() => users.setPage((p) => Math.min(users.totalPages - 1, p + 1))}
-            />
+            <Card>
+                <div className="flex items-end gap-4">
+                    <div className="flex-1">
+                        <FieldLabel>Search</FieldLabel>
+                        <TextInput value={u.query} onChange={u.setQuery} placeholder="Name or email..." />
+                    </div>
+                    <div className="w-40">
+                        <FieldLabel>Role</FieldLabel>
+                        <SelectInput value={u.role} onChange={u.setRole} options={ROLE_OPTIONS} />
+                    </div>
+                </div>
+            </Card>
+
+            <Card>
+                {u.error && <div className="mb-3 text-sm text-red-600">Error: {u.error}</div>}
+                <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
+                    <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-slate-600">
+                            <tr>
+                                <th className="px-4 py-3 text-left font-semibold">Name</th>
+                                <th className="px-4 py-3 text-left font-semibold">Email</th>
+                                <th className="px-4 py-3 text-left font-semibold">Role</th>
+                                <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {u.loading && (
+                                <tr>
+                                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                                        Loading...
+                                    </td>
+                                </tr>
+                            )}
+                            {!u.loading && u.items.length === 0 && (
+                                <tr>
+                                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                                        No users found.
+                                    </td>
+                                </tr>
+                            )}
+                            {!u.loading && u.items.map((row) => (
+                                <tr key={row.id} className="bg-white">
+                                    <td className="px-4 py-3 font-medium text-slate-800">
+                                        {row.displayName ?? row.email}
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-600">{row.email}</td>
+                                    <td className="px-4 py-3 text-slate-600">{row.role}</td>
+                                    <td className="px-4 py-3 text-right">
+                                        <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                                            Edit
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <Pagination
+                    label={`Showing ${u.pageStart} to ${u.pageEnd} of ${u.total} entries`}
+                    limit={u.limit}
+                    onLimitChange={u.setLimit}
+                    onPrev={() => u.setPage((p) => Math.max(0, p - 1))}
+                    onNext={() => u.setPage((p) => Math.min(u.totalPages - 1, p + 1))}
+                    prevDisabled={u.page === 0 || u.loading}
+                    nextDisabled={u.page >= u.totalPages - 1 || u.loading}
+                    currentPage={u.page + 1}
+                    totalPages={u.totalPages}
+                />
+            </Card>
         </div>
     );
 }

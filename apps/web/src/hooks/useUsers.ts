@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchUsers } from "../api/users";
 import type { RestUser } from "../types/user";
 
 export function useUsers() {
-    const [name, setName] = useState("");
-    const [email, setEmail] = useState("");
+    const [query, setQuery] = useState("");
     const [role, setRole] = useState("All");
     const [limit, setLimit] = useState(25);
     const [page, setPage] = useState(0);
@@ -12,10 +11,6 @@ export function useUsers() {
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const query = useMemo(() => {
-        return [name.trim(), email.trim()].filter(Boolean).join(" ");
-    }, [name, email]);
 
     useEffect(() => {
         setPage(0);
@@ -30,7 +25,7 @@ export function useUsers() {
                 const data = await fetchUsers({
                     limit,
                     offset: page * limit,
-                    q: query || undefined,
+                    q: query.trim() || undefined,
                     role,
                 });
                 if (!cancelled) {
@@ -52,8 +47,7 @@ export function useUsers() {
     const pageEnd = Math.min(total, (page + 1) * limit);
 
     return {
-        name, setName,
-        email, setEmail,
+        query, setQuery,
         role, setRole,
         limit, setLimit,
         page, setPage,

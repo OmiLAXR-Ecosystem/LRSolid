@@ -82,15 +82,51 @@ type createClientResponse struct {
 }
 
 type restLRS struct {
-	ID            string `json:"id"`
-	ProjectID     string `json:"projectId"`
-	Name          string `json:"name"`
-	DataStoreID   string `json:"dataStoreId"`
-	DataStoreName string `json:"dataStoreName"`
+	ID            string    `json:"id"`
+	ProjectID     string    `json:"projectId"`
+	Name          string    `json:"name"`
+	DataStoreID   string    `json:"dataStoreId"`
+	DataStoreName string    `json:"dataStoreName"`
+	CreatedAt     time.Time `json:"createdAt"`
 }
 
 type restLRSListResponse struct {
 	Items []restLRS `json:"items"`
+}
+
+type createLRSRequest struct {
+	Name        string `json:"name"`
+	ProjectID   string `json:"projectId"`
+	DataStoreID string `json:"dataStoreId"`
+}
+
+type restProject struct {
+	ID          string    `json:"id"`
+	Slug        string    `json:"slug"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+type restProjectListResponse struct {
+	Items []restProject `json:"items"`
+}
+
+type createProjectRequest struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+}
+
+type restDataStore struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	DatabaseType string `json:"databaseType"`
+	Host         string `json:"host"`
+	IsDefault    bool   `json:"isDefault"`
+}
+
+type restDataStoreListResponse struct {
+	Items []restDataStore `json:"items"`
 }
 
 func RestListUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
@@ -196,7 +232,7 @@ func RestCountUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 func RestListLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := db.Query(r.Context(), `
-				SELECT l.id, l.project_id, l.name, ds.id, ds.name
+				SELECT l.id, l.project_id, l.name, ds.id, ds.name, l.created_at
 				FROM lrs l
 				JOIN data_stores ds ON ds.id = l.data_store_id
 				JOIN projects p ON p.id = l.project_id
@@ -213,7 +249,7 @@ func RestListLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		items := make([]restLRS, 0, 16)
 		for rows.Next() {
 			var item restLRS
-			if err := rows.Scan(&item.ID, &item.ProjectID, &item.Name, &item.DataStoreID, &item.DataStoreName); err != nil {
+			if err := rows.Scan(&item.ID, &item.ProjectID, &item.Name, &item.DataStoreID, &item.DataStoreName, &item.CreatedAt); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan learning record stores failed"})
 				return
 			}
@@ -567,6 +603,259 @@ func generateClientCredentials() (string, string, error) {
 func restNotImplemented() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotImplemented, errorResponse{Error: "not implemented"})
+	}
+}
+
+func RestListProjects(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rows, err := db.Query(r.Context(), `
+			SELECT p.id, p.slug, p.name, p.description, p.created_at
+			FROM projects p
+			JOIN organisations o ON o.id = p.org_id
+			WHERE o.slug = $1
+			ORDER BY p.name ASC
+		`, cfg.DefaultOrg)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "list projects failed"})
+			return
+		}
+		defer rows.Close()
+
+		items := make([]restProject, 0, 8)
+		for rows.Next() {
+			var p restProject
+			if err := rows.Scan(&p.ID, &p.Slug, &p.Name, &p.Description, &p.CreatedAt); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan projects failed"})
+				return
+			}
+			items = append(items, p)
+		}
+		if err := rows.Err(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "read projects failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, restProjectListResponse{Items: items})
+	}
+}
+
+func RestCreateProject(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		var req createProjectRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+		req.Name = strings.TrimSpace(req.Name)
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "name is required"})
+			return
+		}
+		description := normalizeOptionalString(req.Description)
+
+		slugBytes := make([]byte, 4)
+		if _, err := rand.Read(slugBytes); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "generate slug failed"})
+			return
+		}
+		generatedSlug := hex.EncodeToString(slugBytes)
+
+		var orgID string
+		if err := db.QueryRow(ctx, `SELECT id FROM organisations WHERE slug = $1`, cfg.DefaultOrg).Scan(&orgID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "organisation not found"})
+			return
+		}
+
+		var out restProject
+		err := db.QueryRow(ctx, `
+			INSERT INTO projects (org_id, slug, name, description)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id, slug, name, description, created_at
+		`, orgID, generatedSlug, req.Name, description).Scan(&out.ID, &out.Slug, &out.Name, &out.Description, &out.CreatedAt)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create project failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, out)
+	}
+}
+
+func RestDeleteProject(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(chi.URLParam(r, "id"))
+		if id == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "project id required"})
+			return
+		}
+
+		ct, err := db.Exec(r.Context(), `
+			DELETE FROM projects p
+			USING organisations o
+			WHERE p.id = $1
+			  AND p.org_id = o.id
+			  AND o.slug = $2
+		`, id, cfg.DefaultOrg)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "delete project failed"})
+			return
+		}
+		if ct.RowsAffected() == 0 {
+			writeJSON(w, http.StatusNotFound, errorResponse{Error: "project not found"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"status": "deleted"})
+	}
+}
+
+func RestListDataStores(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rows, err := db.Query(r.Context(), `
+			SELECT id, name, database_type, host, is_default
+			FROM data_stores
+			WHERE is_active = true
+			ORDER BY is_default DESC, name ASC
+		`)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "list data stores failed"})
+			return
+		}
+		defer rows.Close()
+
+		items := make([]restDataStore, 0, 8)
+		for rows.Next() {
+			var ds restDataStore
+			if err := rows.Scan(&ds.ID, &ds.Name, &ds.DatabaseType, &ds.Host, &ds.IsDefault); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan data stores failed"})
+				return
+			}
+			items = append(items, ds)
+		}
+		if err := rows.Err(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "read data stores failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, restDataStoreListResponse{Items: items})
+	}
+}
+
+func RestCreateLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		var req createLRSRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+		req.Name = strings.TrimSpace(req.Name)
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "name is required"})
+			return
+		}
+		req.DataStoreID = strings.TrimSpace(req.DataStoreID)
+		if req.DataStoreID == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "dataStoreId is required"})
+			return
+		}
+		req.ProjectID = strings.TrimSpace(req.ProjectID)
+		if req.ProjectID == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "projectId is required"})
+			return
+		}
+
+		tx, err := db.Begin(ctx)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "begin transaction failed"})
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		// Verify the project belongs to this org
+		var projectID string
+		err = tx.QueryRow(ctx, `
+			SELECT p.id FROM projects p
+			JOIN organisations o ON o.id = p.org_id
+			WHERE p.id = $1 AND o.slug = $2
+		`, req.ProjectID, cfg.DefaultOrg).Scan(&projectID)
+		if err == pgx.ErrNoRows {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "project not found"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "resolve project failed"})
+			return
+		}
+
+		// Verify data store exists
+		var dsName string
+		err = tx.QueryRow(ctx, `
+			SELECT name FROM data_stores WHERE id = $1 AND is_active = true
+		`, req.DataStoreID).Scan(&dsName)
+		if err == pgx.ErrNoRows {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "data store not found"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "verify data store failed"})
+			return
+		}
+
+		var out restLRS
+		out.ProjectID = projectID
+		out.Name = req.Name
+		out.DataStoreID = req.DataStoreID
+		out.DataStoreName = dsName
+
+		err = tx.QueryRow(ctx, `
+			INSERT INTO lrs (id, project_id, name, data_store_id)
+			VALUES (gen_random_uuid()::text, $1, $2, $3)
+			RETURNING id, created_at
+		`, projectID, req.Name, req.DataStoreID).Scan(&out.ID, &out.CreatedAt)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create learning record store failed"})
+			return
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "commit failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, out)
+	}
+}
+
+func RestDeleteLRS(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(chi.URLParam(r, "id"))
+		if id == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "lrs id required"})
+			return
+		}
+
+		ct, err := db.Exec(r.Context(), `
+			DELETE FROM lrs l
+			USING projects p, organisations o
+			WHERE l.id = $1
+			  AND l.project_id = p.id
+			  AND p.org_id = o.id
+			  AND o.slug = $2
+		`, id, cfg.DefaultOrg)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "delete learning record store failed"})
+			return
+		}
+		if ct.RowsAffected() == 0 {
+			writeJSON(w, http.StatusNotFound, errorResponse{Error: "learning record store not found"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"status": "deleted"})
 	}
 }
 

@@ -1,4 +1,5 @@
 import { useStatements } from "../hooks/useStatements";
+import { useConfirm } from "../contexts/ConfirmContext";
 import { downloadStatementJson, fetchStatementById } from "../api/statements";
 import { StatementFilters } from "../components/statements/StatementFilters";
 import { StatementTable } from "../components/statements/StatementTable";
@@ -8,7 +9,8 @@ const canExport = import.meta.env.VITE_CAN_EXPORT !== "false";
 const canVoid = import.meta.env.VITE_CAN_VOID !== "false";
 
 export function StatementsView() {
-    const stmts = useStatements();
+    const confirm = useConfirm();
+    const stmts = useStatements(confirm);
 
     const handleExport = async (id: string) => {
         // Use cached detail if available, otherwise fetch

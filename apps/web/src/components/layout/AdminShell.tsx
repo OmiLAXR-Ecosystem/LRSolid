@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import {
     LayoutDashboard, FileText, Users, BarChart2,
     Database, Store, KeyRound, Search, Bell,
-    Settings, Calendar, ChevronDown, LogOut,
+    Settings, Calendar, ChevronDown, LogOut, FolderOpen, ShieldCheck,
 } from "lucide-react";
 import Logo from "../../assets/LRSolid_Logo.png";
 import { useAuth } from "../../contexts/AuthContext";
@@ -12,6 +12,7 @@ export type NavKey =
     | "statements"
     | "users"
     | "clients"
+    | "projects"
     | "reports"
     | "datasources"
     | "marketplace"
@@ -35,9 +36,9 @@ const NAV_ITEMS: NavItem[] = [
     { key: "statements",  label: "Statements",         href: "#/statements",  icon: <FileText className="h-5 w-5" /> },
     { key: "users",       label: "Users",              href: "#/users",       icon: <Users className="h-5 w-5" /> },
     { key: "clients",     label: "Clients",            href: "#/clients",     icon: <KeyRound className="h-5 w-5" /> },
+    { key: "projects",    label: "Projects",           href: "#/projects",    icon: <FolderOpen className="h-5 w-5" /> },
     { key: "reports",     label: "Reports",            href: "#/reports",     icon: <BarChart2 className="h-5 w-5" /> },
     { key: "datasources", label: "Learning Record Stores", href: "#/datasources", icon: <Database className="h-5 w-5" /> },
-    { key: "marketplace", label: "Plugin Marketplace", href: "#/marketplace", icon: <Store className="h-5 w-5" /> },
 ];
 
 const ORG_OPTIONS = ["LRSolid", "Acme Learning", "Demo Org"];
@@ -95,18 +96,17 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                             ))}
                         </nav>
 
-                        {isAdmin && (
-                            <div className="mt-auto p-4">
-                                <a
-                                    href="#/settings"
-                                    aria-current={activeKey === "settings" ? "page" : undefined}
-                                    className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
-                                >
-                                    <Settings className="h-5 w-5" />
-                                    Admin Panel
-                                </a>
-                            </div>
-                        )}
+                        <div className="mt-auto p-4">
+                            <a
+                                href="#/marketplace"
+                                aria-current={activeKey === "marketplace" ? "page" : undefined}
+                                className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
+                            >
+                                <Store className="h-5 w-5" />
+                                Plugin Marketplace
+                            </a>
+                        </div>
+
                     </aside>
 
                     <main className="space-y-6">
@@ -127,11 +127,18 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                                     <Bell className="h-5 w-5 text-slate-600" />
                                 </button>
                                 <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
-                                    <Settings className="h-5 w-5 text-slate-600" />
-                                </button>
-                                <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
                                     <Calendar className="h-5 w-5 text-slate-600" />
                                 </button>
+                                {isAdmin && (
+                                    <a
+                                        href="#/settings"
+                                        title="Admin Panel"
+                                        aria-current={activeKey === "settings" ? "page" : undefined}
+                                        className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center"
+                                    >
+                                        <ShieldCheck className="h-5 w-5 text-slate-600" />
+                                    </a>
+                                )}
                                 <div className="flex items-center gap-2 pl-2">
                                     <div className="h-9 w-9 rounded-full bg-teal-100 ring-1 ring-teal-200 grid place-items-center text-teal-700 text-sm font-semibold select-none">
                                         {user?.email?.[0]?.toUpperCase() ?? "?"}

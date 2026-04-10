@@ -27,7 +27,9 @@ const DEFAULT_FILTERS: StatementFilters = {
     limit: 25,
 };
 
-export function useStatements() {
+type ConfirmFn = (options: { title: string; message: string; confirmLabel?: string; destructive?: boolean }) => Promise<boolean>;
+
+export function useStatements(confirmFn?: ConfirmFn) {
     const [filters, setFiltersState] = useState<StatementFilters>(DEFAULT_FILTERS);
     const [items, setItems] = useState<StatementRow[]>([]);
     const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -145,7 +147,9 @@ export function useStatements() {
 
     const voidDetail = async () => {
         if (!detail) return;
-        const ok = window.confirm(`Void statement ${detail.id}? This cannot be undone.`);
+        const ok = confirmFn
+            ? await confirmFn({ title: "Void Statement", message: `Void statement ${detail.id}? This cannot be undone.`, confirmLabel: "Void", destructive: true })
+            : window.confirm(`Void statement ${detail.id}? This cannot be undone.`);
         if (!ok) return;
         await apiVoidStatement(detail.id);
         closeDetail();

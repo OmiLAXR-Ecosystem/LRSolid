@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ConfirmProvider } from "./contexts/ConfirmContext";
 import { AdminShell, type NavKey } from "./components/layout/AdminShell";
 import { LRSolidDashboard } from "./LRSolidDashboard";
 import { StatementsView } from "./views/StatementsView";
 import { UsersView } from "./views/UsersView";
 import { ClientsView } from "./views/ClientsView";
+import { LRSView } from "./views/LRSView";
+import { ProjectsView } from "./views/ProjectsView";
 import { LoginView } from "./views/LoginView";
 import { PlaceholderView } from "./views/PlaceholderView";
 
@@ -20,8 +23,9 @@ const ROUTES: Record<string, RouteConfig> = {
     statements:  { activeKey: "statements",  searchPlaceholder: "Search statements...", content: <StatementsView /> },
     users:       { activeKey: "users",       searchPlaceholder: "Search users...",      content: <UsersView /> },
     clients:     { activeKey: "clients",                                                content: <ClientsView /> },
+    projects:    { activeKey: "projects",                                               content: <ProjectsView /> },
     reports:     { activeKey: "reports",                                                content: <PlaceholderView title="Reports" /> },
-    datasources: { activeKey: "datasources",                                            content: <PlaceholderView title="Learning Record Stores" /> },
+    datasources: { activeKey: "datasources",                                            content: <LRSView /> },
     marketplace: { activeKey: "marketplace",                                            content: <PlaceholderView title="Plugin Marketplace" /> },
     settings:    { activeKey: "settings",                                               content: <PlaceholderView title="Settings" /> },
 };
@@ -68,7 +72,9 @@ function AppShell() {
 export default function App() {
     return (
         <AuthProvider>
-            <AppShell />
+            <ConfirmProvider>
+                <AppShell />
+            </ConfirmProvider>
         </AuthProvider>
     );
 }

@@ -106,9 +106,12 @@ dev: ## Run API + Web in dev (two terminals recommended)
 	@echo "  make dev-api"
 	@echo "  make dev-web"
 
+AIR ?= $(shell go env GOPATH)/bin/air
+
 .PHONY: dev-api
-dev-api: ## Run API locally (requires PG_DSN)
-	@cd $(ROOT) && PG_DSN="$(PG_DSN)" $(GO) run ./apps/api
+dev-api: ## Run API locally with hot reload via air (requires PG_DSN)
+	@test -x "$(AIR)" || (echo "air not found — install with: go install github.com/air-verse/air@latest" && exit 1)
+	@cd $(ROOT) && PG_DSN="$(PG_DSN)" $(AIR)
 
 .PHONY: dev-web
 dev-web: ## Run Web locally (pnpm dev)

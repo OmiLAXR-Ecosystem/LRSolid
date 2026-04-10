@@ -6,18 +6,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
 func TestStatements_InsertAndQueryWithCursor(t *testing.T) {
-	withTestDB(t, func(ctx context.Context, pool any) {
-		db := pool.(*pgxpool.Pool) // typed in helper via interface, keep local tidy
-		_ = db
+	withTestDB(t, func(ctx context.Context, pool *pgxpool.Pool) {
+		_ = pool
 	})
 }
-
-// typed wrapper (so we can keep helper signature stable)
-type pgxpool struct{ *pgxpool.Pool }
 
 func TestStatements_EndToEnd(t *testing.T) {
 	withTestDB(t, func(ctx context.Context, pool *pgxpool.Pool) {

@@ -112,11 +112,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 4) Ensure a default project exists for this org
+	var projectID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO projects (org_id, slug, name)
+		VALUES ($1, 'default', $2)
+		ON CONFLICT (org_id, slug) DO UPDATE SET name = EXCLUDED.name
+		RETURNING id
+	`, orgID, *orgName).Scan(&projectID)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ERROR: upsert project:", err)
+		os.Exit(1)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "ERROR: commit:", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("OK: admin user created/updated\n- email: %s\n- user_id: %s\n- org: %s (%s)\n- role: %s\n",
-		*email, userID, *orgSlug, orgID, *role)
+	fmt.Printf("OK: admin user created/updated\n- email: %s\n- user_id: %s\n- org: %s (%s)\n- project_id: %s\n- role: %s\n",
+		*email, userID, *orgSlug, orgID, projectID, *role)
 }
