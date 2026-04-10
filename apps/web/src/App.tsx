@@ -11,6 +11,7 @@ import { ClientsView } from "./views/ClientsView";
 import { LRSView } from "./views/LRSView";
 import { ProjectsView } from "./views/ProjectsView";
 import { OrganizationsView } from "./views/OrganizationsView";
+import { SettingsView } from "./views/SettingsView";
 import { LoginView } from "./views/LoginView";
 import { PlaceholderView } from "./views/PlaceholderView";
 
@@ -29,7 +30,7 @@ const ROUTES: Record<string, RouteConfig> = {
     reports:       { activeKey: "reports",                                                content: <PlaceholderView title="Reports" /> },
     datasources:   { activeKey: "datasources",                                            content: <LRSView /> },
     marketplace:   { activeKey: "marketplace",                                            content: <PlaceholderView title="Plugin Marketplace" /> },
-    settings:      { activeKey: "settings",                                               content: <PlaceholderView title="Settings" /> },
+    settings:      { activeKey: "settings",                                               content: <SettingsView /> },
     organizations: { activeKey: "organizations",                                          content: <OrganizationsView /> },
 };
 

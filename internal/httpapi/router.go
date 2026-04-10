@@ -61,6 +61,12 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 				// Org-scoped endpoints
 				r.Route("/{org}", func(r chi.Router) {
 					r.Get("/dashboard", AdminDashboard(cfg, db))
+					r.Get("/export/settings", RestGetExportSettings(cfg, db))
+					r.Put("/export/settings", RestUpdateExportSettings(cfg, db))
+					r.Get("/export/jobs", RestListExportJobs(cfg, db))
+					r.Get("/export/jobs/{id}", RestGetExportJob(cfg, db))
+					r.Get("/export/jobs/{id}/download", RestDownloadExportJob(cfg, db))
+					r.Post("/export/statements", RestCreateStatementExport(cfg, db))
 					r.Get("/user", RestListUsers(cfg, db))
 					r.Get("/user/count", RestCountUsers(cfg, db))
 					r.Get("/project", RestListProjects(cfg, db))

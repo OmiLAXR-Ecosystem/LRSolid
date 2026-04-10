@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import {
     LayoutDashboard, FileText, Users, BarChart2,
     Database, Store, KeyRound, Search, Bell,
-    Settings, Calendar, ChevronDown, LogOut, FolderOpen, ShieldCheck,
+    Calendar, ChevronDown, LogOut, FolderOpen, ShieldCheck,
     Building2,
 } from "lucide-react";
 import Logo from "../../assets/LRSolid_Logo.png";
@@ -77,10 +77,10 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
     const marketplaceHref = isAllOrgs ? `#/${ALL_ORGS}/organizations` : `#/${currentOrg}/marketplace`;
 
     return (
-        <div className="min-h-screen bg-slate-100 text-slate-900">
-            <div className="p-6">
-                <div className="grid grid-cols-[260px_1fr] gap-6 min-h-[calc(100vh-3rem)]">
-                    <aside className="rounded-2xl bg-gradient-to-b from-teal-600 to-cyan-700 text-white shadow-sm overflow-hidden flex flex-col">
+        <div className="h-screen max-h-screen overflow-hidden bg-slate-100 text-slate-900">
+            <div className="h-full p-6">
+                <div className="grid h-full min-h-0 grid-cols-[260px_1fr] gap-6">
+                    <aside className="min-h-0 rounded-2xl bg-gradient-to-b from-teal-600 to-cyan-700 text-white shadow-sm overflow-hidden flex flex-col">
                         <div className="px-5 py-5 border-b border-white/15 flex items-center gap-3">
                             <img src={Logo} alt="LRSolid" className="w-full" />
                         </div>
@@ -104,7 +104,7 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                             </div>
                         </div>
 
-                        <nav className="px-4 py-4 space-y-2">
+                        <nav className="px-4 py-4 space-y-2 overflow-y-auto">
                             {navItems.map((item) => (
                                 <SidebarItem key={item.key} item={item} active={activeKey === item.key} />
                             ))}
@@ -124,8 +124,8 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                         )}
                     </aside>
 
-                    <main className="space-y-6">
-                        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 px-5 py-4 flex items-center justify-between">
+                    <main className="min-h-0 flex flex-col gap-6">
+                        <div className="shrink-0 rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 px-5 py-4 flex items-center justify-between">
                             <div className="flex items-center gap-3 w-[520px] max-w-full">
                                 {searchPlaceholder && (
                                     <div className="relative w-full">
@@ -175,7 +175,12 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                                 </div>
                             </div>
                         </div>
-                        {children}
+                        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                            {children}
+                        </div>
+                        <footer className="shrink-0 pb-1 text-center text-xs text-slate-400">
+                            © 2026 Sergej Görzen. All rights reserved.
+                        </footer>
                     </main>
                 </div>
             </div>
