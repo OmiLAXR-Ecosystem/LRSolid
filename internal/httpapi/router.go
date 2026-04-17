@@ -10,9 +10,10 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
+	"github.com/SGoerzen/LRSolid/internal/plugins"
 )
 
-func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handler {
+func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *plugins.Registry) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -60,7 +61,10 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 
 				// Org-scoped endpoints
 				r.Route("/{org}", func(r chi.Router) {
-					r.Get("/dashboard", AdminDashboard(cfg, db))
+					r.Get("/dashboard", AdminDashboard(cfg, db, registry))
+					r.Get("/dashboard/config", RestGetDashboardConfig(cfg, db, registry))
+					r.Put("/dashboard/config", RestPutDashboardConfig(cfg, db, registry))
+					r.Delete("/dashboard/config", RestDeleteDashboardConfig(cfg, db))
 					r.Get("/export/settings", RestGetExportSettings(cfg, db))
 					r.Put("/export/settings", RestUpdateExportSettings(cfg, db))
 					r.Get("/export/jobs", RestListExportJobs(cfg, db))

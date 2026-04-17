@@ -17,6 +17,7 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
+	"github.com/SGoerzen/LRSolid/internal/plugins"
 	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
@@ -89,44 +90,7 @@ func getOrgID(ctx context.Context, db *pgxpool.Pool, slug string) (string, error
 
 // ---- Dashboard ----
 
-type dashboardResponse struct {
-	KPIs struct {
-		TotalStatements        int64 `json:"totalStatements"`
-		ActiveUsers            int64 `json:"activeUsers"`
-		StatementsToday        int64 `json:"statementsToday"`
-		ErrorLogs              int64 `json:"errorLogs"`
-		ProjectsCount          int64 `json:"projectsCount"`
-		LRSCount               int64 `json:"lrsCount"`
-		ClientsCount           int64 `json:"clientsCount"`
-		ProjectsWithStatements int64 `json:"projectsWithStatements"`
-		LRSWithStatements      int64 `json:"lrsWithStatements"`
-		ClientsWithStatements  int64 `json:"clientsWithStatements"`
-	} `json:"kpis"`
-	RecentStatements []dashboardStatement `json:"recentStatements"`
-	ActivityDaily    []dashboardDayCount  `json:"activityDaily"`
-}
-
-type dashboardStatement struct {
-	ID          string     `json:"id"`
-	ActorName   *string    `json:"actorName,omitempty"`
-	ActorMBox   *string    `json:"actorMbox,omitempty"`
-	VerbID      *string    `json:"verbId,omitempty"`
-	ObjectID    *string    `json:"objectId,omitempty"`
-	TenantID    string     `json:"tenantId"`
-	LRSName     *string    `json:"lrsName,omitempty"`
-	ProjectName string     `json:"projectName"`
-	ClientID    *string    `json:"clientId,omitempty"`
-	ClientName  *string    `json:"clientName,omitempty"`
-	StoredAt    time.Time  `json:"storedAt"`
-	Timestamp   *time.Time `json:"timestamp,omitempty"`
-}
-
-type dashboardDayCount struct {
-	Day   string `json:"day"`
-	Count int64  `json:"count"`
-}
-
-func AdminDashboard(_ config.Config, db *pgxpool.Pool) http.HandlerFunc {
+func AdminDashboard(_ config.Config, db *pgxpool.Pool, registry *plugins.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		claims, ok := auth.ClaimsFromContext(ctx)
@@ -154,188 +118,22 @@ func AdminDashboard(_ config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		var total int64
-		if err := db.QueryRow(ctx, `SELECT statement_count FROM organisations WHERE id=$1`, orgID).Scan(&total); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query total statements failed"})
-			return
+		// Precedence: user config → org config → default (all widgets).
+		entries := loadConfig(ctx, db, orgID, &claims.UserID)
+		if entries == nil {
+			entries = loadConfig(ctx, db, orgID, nil)
+		}
+		if entries == nil {
+			entries = registry.DefaultEntries()
 		}
 
-		var projectsCount int64
-		if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM projects WHERE org_id=$1`, orgID).Scan(&projectsCount); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query projects count failed"})
-			return
-		}
-
-		var lrsCount int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(*)
-			FROM lrs l
-			JOIN projects p ON p.id = l.project_id
-			WHERE p.org_id = $1
-		`, orgID).Scan(&lrsCount); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query lrs count failed"})
-			return
-		}
-
-		var clientsCount int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(*)
-			FROM clients c
-			JOIN projects p ON p.id = c.project_id
-			WHERE p.org_id = $1
-		`, orgID).Scan(&clientsCount); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query clients count failed"})
-			return
-		}
-
-		var projectsWithStatements int64
-		if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM projects WHERE org_id=$1 AND statement_count > 0`, orgID).Scan(&projectsWithStatements); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query projects with statements failed"})
-			return
-		}
-
-		var lrsWithStatements int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(*)
-			FROM lrs l
-			JOIN projects p ON p.id = l.project_id
-			WHERE p.org_id = $1 AND l.statement_count > 0
-		`, orgID).Scan(&lrsWithStatements); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query lrs with statements failed"})
-			return
-		}
-
-		var clientsWithStatements int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(*)
-			FROM clients c
-			JOIN projects p ON p.id = c.project_id
-			WHERE p.org_id = $1 AND c.statement_count > 0
-		`, orgID).Scan(&clientsWithStatements); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query clients with statements failed"})
-			return
-		}
-
-		now := time.Now().UTC()
-		startOfDay := now.Format("2006-01-02")
-		var today int64
-		if err := db.QueryRow(ctx, `
-			SELECT COALESCE(statement_count, 0)
-			FROM statement_stats_daily
-			WHERE day = $1::date
-			  AND scope_type = 'organisation'
-			  AND scope_id = $2
-		`, startOfDay, orgID).Scan(&today); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				today = 0
-			} else {
-				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query statements today failed"})
-				return
-			}
-		}
-
-		lookback := now.Add(-30 * 24 * time.Hour)
-		var active int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(DISTINCT st.actor_mbox)
-			FROM statements st
-			JOIN lrs l ON l.id = st.tenant_id
-			JOIN projects p ON p.id = l.project_id
-			WHERE p.org_id = $1
-			  AND st.actor_mbox IS NOT NULL
-			  AND st.stored_at >= $2
-		`, orgID, lookback).Scan(&active); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query active users failed"})
-			return
-		}
-
-		rows, err := db.Query(ctx, `
-			SELECT
-				st.id,
-				st.statement->'actor'->>'name' AS actor_name,
-				st.actor_mbox,
-				st.verb_id,
-				st.object_id,
-				st.tenant_id,
-				l.name AS lrs_name,
-				p.name AS project_name,
-				st.client_id::text,
-				c.name AS client_name,
-				st.stored_at,
-				(st.statement->>'timestamp')::timestamptz
-			FROM statements st
-			JOIN lrs l ON l.id = st.tenant_id
-			JOIN projects p ON p.id = l.project_id
-			LEFT JOIN clients c ON c.id = st.client_id
-			WHERE p.org_id = $1
-			ORDER BY st.stored_at DESC, st.id DESC
-			LIMIT 5
-		`, orgID)
+		widgets, err := registry.FetchAll(ctx, db, orgID, entries)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query recent statements failed"})
-			return
-		}
-		defer rows.Close()
-
-		recent := make([]dashboardStatement, 0, 5)
-		for rows.Next() {
-			var st dashboardStatement
-			var ts *time.Time
-			if err := rows.Scan(&st.ID, &st.ActorName, &st.ActorMBox, &st.VerbID, &st.ObjectID, &st.TenantID, &st.LRSName, &st.ProjectName, &st.ClientID, &st.ClientName, &st.StoredAt, &ts); err != nil {
-				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan recent statements failed"})
-				return
-			}
-			st.Timestamp = ts
-			recent = append(recent, st)
-		}
-		if err := rows.Err(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "read recent statements failed"})
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error()})
 			return
 		}
 
-		activityRows, err := db.Query(ctx, `
-			SELECT day::text, statement_count
-			FROM statement_stats_daily
-			WHERE scope_type = 'organisation'
-			  AND scope_id = $1
-			  AND day >= (current_date - INTERVAL '6 days')::date
-			ORDER BY day ASC
-		`, orgID)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query activity failed"})
-			return
-		}
-		defer activityRows.Close()
-
-		activity := make([]dashboardDayCount, 0, 7)
-		for activityRows.Next() {
-			var d dashboardDayCount
-			if err := activityRows.Scan(&d.Day, &d.Count); err != nil {
-				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan activity failed"})
-				return
-			}
-			activity = append(activity, d)
-		}
-		if err := activityRows.Err(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "read activity failed"})
-			return
-		}
-
-		var resp dashboardResponse
-		resp.KPIs.TotalStatements = total
-		resp.KPIs.ActiveUsers = active
-		resp.KPIs.StatementsToday = today
-		resp.KPIs.ErrorLogs = 0
-		resp.KPIs.ProjectsCount = projectsCount
-		resp.KPIs.LRSCount = lrsCount
-		resp.KPIs.ClientsCount = clientsCount
-		resp.KPIs.ProjectsWithStatements = projectsWithStatements
-		resp.KPIs.LRSWithStatements = lrsWithStatements
-		resp.KPIs.ClientsWithStatements = clientsWithStatements
-		resp.RecentStatements = recent
-		resp.ActivityDaily = activity
-
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusOK, map[string]any{"widgets": widgets, "layout": entries})
 	}
 }
 

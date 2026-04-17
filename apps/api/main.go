@@ -18,6 +18,9 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/httpapi"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
+	"github.com/SGoerzen/LRSolid/internal/plugins"
+	"github.com/SGoerzen/LRSolid/internal/plugins/builtin"
+	"github.com/SGoerzen/LRSolid/internal/plugins/jsplugin"
 	"github.com/SGoerzen/LRSolid/internal/statsrollup"
 	pgstore "github.com/SGoerzen/LRSolid/internal/store/postgres"
 )
@@ -58,7 +61,18 @@ func main() {
 	stmtStore := pgstore.NewStatementStore(db)
 	svc := lrs.NewService(stmtStore)
 
-	router := httpapi.NewRouter(cfg, svc, db)
+	registry := plugins.Global
+	builtin.Register(registry)
+
+	if cfg.PluginsDir != "" {
+		n, err := jsplugin.LoadDir(cfg.PluginsDir, registry)
+		if err != nil {
+			log.Fatal().Err(err).Msg("js plugins load failed")
+		}
+		log.Info().Int("count", n).Str("dir", cfg.PluginsDir).Msg("js plugins loaded")
+	}
+
+	router := httpapi.NewRouter(cfg, svc, db, registry)
 
 	if cfg.StatsRollupEnabled {
 		worker := statsrollup.New(db)

@@ -36,6 +36,9 @@ type Config struct {
 	StatsRollupEnabled   bool
 	StatsRollupIntervalS int
 	StatsRollupBatchSize int
+
+	// JS plugins directory (optional). Set via PLUGINS_DIR env var.
+	PluginsDir string
 }
 
 func Load() (Config, error) {
@@ -56,6 +59,7 @@ func Load() (Config, error) {
 		StatsRollupEnabled:   getenvBool("STATS_ROLLUP_ENABLED", true),
 		StatsRollupIntervalS: getenvInt("STATS_ROLLUP_INTERVAL_S", 15),
 		StatsRollupBatchSize: getenvInt("STATS_ROLLUP_BATCH_SIZE", 5000),
+		PluginsDir:           getenv("PLUGINS_DIR", ""),
 	}
 
 	if c.PostgresDSN == "" {
