@@ -8,6 +8,20 @@ export type UserQuery = {
     role?: string;
 };
 
+export type InviteUserPayload = {
+    email: string;
+    displayName?: string;
+    role: string;
+};
+
+export async function inviteUser(org: string, payload: InviteUserPayload): Promise<{ token: string; inviteURL: string }> {
+    return apiFetch(`/api/v1/${encodeURIComponent(org)}/user/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+}
+
 export async function fetchUsers(org: string, query: UserQuery): Promise<RestUserResponse> {
     const params = new URLSearchParams();
     params.set("limit", String(query.limit));

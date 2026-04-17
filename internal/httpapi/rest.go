@@ -20,6 +20,7 @@ import (
 
 	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
+	emailpkg "github.com/SGoerzen/LRSolid/internal/email"
 )
 
 type restUser struct {
@@ -341,6 +342,82 @@ func RestCountUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"count": total})
+	}
+}
+
+type inviteUserRequest struct {
+	Email       string  `json:"email"`
+	DisplayName *string `json:"displayName,omitempty"`
+	Role        string  `json:"role"`
+}
+
+func RestInviteUser(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
+		orgID, err := getOrgID(ctx, db, orgSlug)
+		if err != nil || orgID == "" {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup org failed"})
+			return
+		}
+
+		var req inviteUserRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+		req.Email = strings.TrimSpace(req.Email)
+		if req.Email == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "email is required"})
+			return
+		}
+		validRoles := map[string]bool{"owner": true, "admin": true, "member": true, "viewer": true}
+		if !validRoles[req.Role] {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "role must be owner, admin, member, or viewer"})
+			return
+		}
+
+		tokenBytes := make([]byte, 32)
+		if _, err := rand.Read(tokenBytes); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "token generation failed"})
+			return
+		}
+		token := hex.EncodeToString(tokenBytes)
+
+		_, err = db.Exec(ctx, `
+			INSERT INTO user_invites (token, org_id, email, role, invited_by, expires_at)
+			VALUES ($1, $2, $3, $4, $5, now() + interval '7 days')
+		`, token, orgID, req.Email, req.Role, claims.UserID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create invite failed"})
+			return
+		}
+
+		inviteURL := cfg.AppURL + "/accept-invite?token=" + token
+		emailCfg := emailpkg.Config{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			User:     cfg.SMTPUser,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+		}
+		if cfg.SMTPHost != "" {
+			if err := emailpkg.SendInvite(emailCfg, req.Email, inviteURL); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "send email failed: " + err.Error()})
+				return
+			}
+		}
+
+		writeJSON(w, http.StatusCreated, map[string]any{"token": token, "inviteURL": inviteURL})
 	}
 }
 

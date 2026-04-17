@@ -27,14 +27,175 @@ type updateExportSettingsRequest struct {
 	LocalMaxBytes                 *int64 `json:"localMaxBytes"`
 }
 
+type fieldConditionReq struct {
+	Op      string `json:"operator"`
+	Value   string `json:"value"`
+	ValueTo string `json:"valueTo,omitempty"`
+}
+
+type extensionConditionReq struct {
+	Key   string `json:"key"`
+	Op    string `json:"operator"`
+	Value string `json:"value"`
+}
+
 type createExportJobRequest struct {
-	ProjectID   *string `json:"projectId,omitempty"`
-	LRSID       *string `json:"lrsId,omitempty"`
-	ClientID    *string `json:"clientId,omitempty"`
-	Format      string  `json:"format,omitempty"`
-	Compression string  `json:"compression,omitempty"`
-	TargetType  *string `json:"targetType,omitempty"`
-	TargetPath  *string `json:"targetPath,omitempty"`
+	ProjectID  *string                 `json:"projectId,omitempty"`
+	LRSID      *string                 `json:"lrsId,omitempty"`
+	ClientID   *string                 `json:"clientId,omitempty"`
+	ActorMbox  *fieldConditionReq      `json:"actorMbox,omitempty"`
+	VerbID     *fieldConditionReq      `json:"verbId,omitempty"`
+	ObjectID   *fieldConditionReq      `json:"objectId,omitempty"`
+	StoredAt   *fieldConditionReq      `json:"storedAt,omitempty"`
+	Extensions []extensionConditionReq `json:"extensions,omitempty"`
+	Format      string                 `json:"format,omitempty"`
+	Compression string                 `json:"compression,omitempty"`
+	TargetType  *string                `json:"targetType,omitempty"`
+	TargetPath  *string                `json:"targetPath,omitempty"`
+}
+
+// statementWhereFilter holds all filter parameters for building a WHERE clause.
+type statementWhereFilter struct {
+	OrgID      string
+	ProjectID  *string
+	LRSID      *string
+	ClientID   *string
+	ActorMbox  *fieldConditionReq
+	VerbID     *fieldConditionReq
+	ObjectID   *fieldConditionReq
+	StoredAt   *fieldConditionReq
+	Extensions []extensionConditionReq
+}
+
+// buildStatementWhere constructs the WHERE clause and args for statement queries.
+// Returns (whereClause, args, nextArgIndex).
+func buildStatementWhere(f statementWhereFilter) (string, []any, int) {
+	args := []any{f.OrgID}
+	where := "p.org_id = $1"
+	n := 2
+
+	add := func(clause string, vals ...any) {
+		where += " AND " + clause
+		args = append(args, vals...)
+		n += len(vals)
+	}
+
+	if f.ProjectID != nil {
+		add(fmt.Sprintf("p.id = $%d", n), *f.ProjectID)
+	}
+	if f.LRSID != nil {
+		add(fmt.Sprintf("st.tenant_id = $%d", n), *f.LRSID)
+	}
+	if f.ClientID != nil {
+		add(fmt.Sprintf("st.client_id = $%d::uuid", n), *f.ClientID)
+	}
+	if c := f.ActorMbox; c != nil && c.Value != "" {
+		where += " AND " + textConditionSQL("st.actor_mbox", c, n)
+		if c.Op == "contains" {
+			args = append(args, "%"+c.Value+"%")
+		} else {
+			args = append(args, c.Value)
+		}
+		n++
+	}
+	if c := f.VerbID; c != nil && c.Value != "" {
+		where += " AND " + textConditionSQL("st.verb_id", c, n)
+		if c.Op == "contains" {
+			args = append(args, "%"+c.Value+"%")
+		} else {
+			args = append(args, c.Value)
+		}
+		n++
+	}
+	if c := f.ObjectID; c != nil && c.Value != "" {
+		where += " AND " + textConditionSQL("st.object_id", c, n)
+		if c.Op == "contains" {
+			args = append(args, "%"+c.Value+"%")
+		} else {
+			args = append(args, c.Value)
+		}
+		n++
+	}
+	if c := f.StoredAt; c != nil && c.Value != "" {
+		if c.Op == "between" && c.ValueTo != "" {
+			add(fmt.Sprintf("st.stored_at BETWEEN $%d::timestamptz AND $%d::timestamptz", n, n+1), c.Value, c.ValueTo)
+		} else {
+			op := timestampOp(c.Op)
+			add(fmt.Sprintf("st.stored_at %s $%d::timestamptz", op, n), c.Value)
+		}
+	}
+	for _, ext := range f.Extensions {
+		if ext.Key == "" || ext.Value == "" {
+			continue
+		}
+		// Check in context.extensions, result.extensions, object.definition.extensions
+		clause, val := extensionConditionSQL(ext, n)
+		where += " AND " + clause
+		args = append(args, ext.Key, val)
+		n += 2
+	}
+
+	return where, args, n
+}
+
+func textConditionSQL(col string, c *fieldConditionReq, n int) string {
+	switch c.Op {
+	case "neq":
+		return fmt.Sprintf("%s <> $%d", col, n)
+	case "contains":
+		return fmt.Sprintf("%s ILIKE $%d", col, n)
+	default: // eq
+		return fmt.Sprintf("%s = $%d", col, n)
+	}
+}
+
+func timestampOp(op string) string {
+	switch op {
+	case "lt":
+		return "<"
+	case "lte":
+		return "<="
+	case "gt":
+		return ">"
+	case "gte":
+		return ">="
+	default: // eq
+		return "="
+	}
+}
+
+func extensionConditionSQL(ext extensionConditionReq, n int) (clause, val string) {
+	val = ext.Value
+	paths := []string{
+		fmt.Sprintf("(st.statement -> 'context' -> 'extensions' ->> $%d)", n),
+		fmt.Sprintf("(st.statement -> 'result' -> 'extensions' ->> $%d)", n),
+		fmt.Sprintf("(st.statement -> 'object' -> 'definition' -> 'extensions' ->> $%d)", n),
+	}
+	var conds []string
+	valN := n + 1
+	for _, p := range paths {
+		switch ext.Op {
+		case "neq":
+			conds = append(conds, fmt.Sprintf("%s <> $%d", p, valN))
+		case "contains":
+			conds = append(conds, fmt.Sprintf("%s ILIKE $%d", p, valN))
+		case "lt":
+			conds = append(conds, fmt.Sprintf("(%s)::numeric < ($%d)::numeric", p, valN))
+		case "lte":
+			conds = append(conds, fmt.Sprintf("(%s)::numeric <= ($%d)::numeric", p, valN))
+		case "gt":
+			conds = append(conds, fmt.Sprintf("(%s)::numeric > ($%d)::numeric", p, valN))
+		case "gte":
+			conds = append(conds, fmt.Sprintf("(%s)::numeric >= ($%d)::numeric", p, valN))
+		default: // eq
+			conds = append(conds, fmt.Sprintf("%s = $%d", p, valN))
+		}
+	}
+	if ext.Op == "contains" {
+		val = "%" + ext.Value + "%"
+	}
+	clause = "(" + strings.Join(conds, " OR ") + ")"
+	return clause, val
 }
 
 type exportJobResponse struct {
@@ -216,7 +377,18 @@ func RestCreateStatementExport(cfg config.Config, db *pgxpool.Pool) http.Handler
 			return
 		}
 
-		estimateRows, estimateBytes, err := estimateStatementExport(ctx, db, orgID, projectID, lrsID, clientID)
+		wf := statementWhereFilter{
+			OrgID:      orgID,
+			ProjectID:  projectID,
+			LRSID:      lrsID,
+			ClientID:   clientID,
+			ActorMbox:  req.ActorMbox,
+			VerbID:     req.VerbID,
+			ObjectID:   req.ObjectID,
+			StoredAt:   req.StoredAt,
+			Extensions: req.Extensions,
+		}
+		estimateRows, estimateBytes, err := estimateStatementExport(ctx, db, wf)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
 			return
@@ -236,15 +408,20 @@ func RestCreateStatementExport(cfg config.Config, db *pgxpool.Pool) http.Handler
 			return
 		}
 
-		filters := map[string]any{
-			"projectId": projectID,
-			"lrsId":     lrsID,
-			"clientId":  clientID,
+		filtersPayload := map[string]any{
+			"projectId":  projectID,
+			"lrsId":      lrsID,
+			"clientId":   clientID,
+			"actorMbox":  req.ActorMbox,
+			"verbId":     req.VerbID,
+			"objectId":   req.ObjectID,
+			"storedAt":   req.StoredAt,
+			"extensions": req.Extensions,
 		}
 		targetConfig := map[string]any{
 			"path": targetPath,
 		}
-		filtersJSON, _ := json.Marshal(filters)
+		filtersJSON, _ := json.Marshal(filtersPayload)
 		var targetConfigJSON []byte
 		if targetType != nil {
 			targetConfigJSON, _ = json.Marshal(targetConfig)
@@ -397,26 +574,8 @@ func RestGetExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func estimateStatementExport(ctx context.Context, db *pgxpool.Pool, orgID string, projectID, lrsID, clientID *string) (rows int64, bytes int64, err error) {
-	args := []any{orgID}
-	where := "p.org_id = $1"
-	argn := 2
-	if projectID != nil {
-		where += " AND p.id = $" + strconv.Itoa(argn)
-		args = append(args, *projectID)
-		argn++
-	}
-	if lrsID != nil {
-		where += " AND st.tenant_id = $" + strconv.Itoa(argn)
-		args = append(args, *lrsID)
-		argn++
-	}
-	if clientID != nil {
-		where += " AND st.client_id = $" + strconv.Itoa(argn) + "::uuid"
-		args = append(args, *clientID)
-		argn++
-	}
-
+func estimateStatementExport(ctx context.Context, db *pgxpool.Pool, f statementWhereFilter) (rows int64, bytes int64, err error) {
+	where, args, _ := buildStatementWhere(f)
 	q := `
 		SELECT
 			COUNT(*)::bigint,
@@ -425,7 +584,6 @@ func estimateStatementExport(ctx context.Context, db *pgxpool.Pool, orgID string
 		JOIN lrs l ON l.id = st.tenant_id
 		JOIN projects p ON p.id = l.project_id
 		WHERE ` + where
-
 	var avgSize int64
 	if err := db.QueryRow(ctx, q, args...).Scan(&rows, &avgSize); err != nil {
 		return 0, 0, fmt.Errorf("estimate query failed")
@@ -485,31 +643,29 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 			return
 		}
 
-		// Parse filters
-		var filters map[string]any
-		_ = json.Unmarshal(filtersRaw, &filters)
-		projectID := optionalStringFromMap(filters, "projectId")
-		lrsID := optionalStringFromMap(filters, "lrsId")
-		clientID := optionalStringFromMap(filters, "clientId")
+		// Parse stored filters back into filter struct
+		wf := filtersToWhereFilter(orgID, filtersRaw)
 
-		// Build query
-		args := []any{orgID}
-		where := "p.org_id = $1"
-		argn := 2
-		if projectID != nil {
-			where += " AND p.id = $" + strconv.Itoa(argn)
-			args = append(args, *projectID)
-			argn++
+		where, args, argn := buildStatementWhere(wf)
+
+		// Mark job as running
+		if _, err := db.Exec(ctx, `
+			UPDATE export_jobs SET status = 'running', started_at = now() WHERE id = $1::uuid
+		`, job.ID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "failed to update job status"})
+			return
 		}
-		if lrsID != nil {
-			where += " AND st.tenant_id = $" + strconv.Itoa(argn)
-			args = append(args, *lrsID)
-			argn++
-		}
-		if clientID != nil {
-			where += " AND st.client_id = $" + strconv.Itoa(argn) + "::uuid"
-			args = append(args, *clientID)
-			argn++
+
+		setJobStatus := func(status, errMsg string) {
+			if errMsg != "" {
+				_, _ = db.Exec(context.Background(), `
+					UPDATE export_jobs SET status = $2, finished_at = now(), error_message = $3 WHERE id = $1::uuid
+				`, job.ID, status, errMsg)
+			} else {
+				_, _ = db.Exec(context.Background(), `
+					UPDATE export_jobs SET status = $2, finished_at = now() WHERE id = $1::uuid
+				`, job.ID, status)
+			}
 		}
 
 		filename := "export-" + job.ID + ".ndjson.gz"
@@ -518,13 +674,13 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 		w.WriteHeader(http.StatusOK)
 
 		gz := gzip.NewWriter(w)
-		defer gz.Close()
 
 		// Stream in batches using keyset cursor on (stored_at, tenant_id, id)
 		var cursorStoredAt time.Time
 		var cursorTenantID, cursorID string
 		first := true
 		const batchSize = 500
+		streamErr := ""
 
 		for {
 			batchArgs := append(args, cursorStoredAt, cursorTenantID, cursorID, batchSize) //nolint:gocritic
@@ -541,7 +697,6 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 				LIMIT $` + strconv.Itoa(cursorArgN+3)
 
 			if first {
-				// First page: no cursor filter
 				batchArgs = append(args, batchSize)
 				q = `
 					SELECT st.stored_at, st.tenant_id, st.id, st.statement::text
@@ -556,7 +711,8 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 
 			rows, err := db.Query(ctx, q, batchArgs...)
 			if err != nil {
-				return
+				streamErr = "query failed: " + err.Error()
+				break
 			}
 
 			count := 0
@@ -564,30 +720,58 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 				var rawStmt string
 				if err := rows.Scan(&cursorStoredAt, &cursorTenantID, &cursorID, &rawStmt); err != nil {
 					rows.Close()
-					return
+					streamErr = "scan failed: " + err.Error()
+					break
 				}
 				_, _ = gz.Write([]byte(rawStmt))
 				_, _ = gz.Write([]byte("\n"))
 				count++
 			}
 			rows.Close()
-			if rows.Err() != nil || count < batchSize {
-				return
+			if rows.Err() != nil {
+				streamErr = "read failed: " + rows.Err().Error()
+				break
 			}
+			if streamErr != "" || count < batchSize {
+				break
+			}
+		}
+
+		_ = gz.Close()
+
+		if streamErr != "" {
+			setJobStatus("failed", streamErr)
+		} else {
+			setJobStatus("completed", "")
 		}
 	}
 }
 
-func optionalStringFromMap(m map[string]any, key string) *string {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return nil
+// filtersToWhereFilter deserialises the JSONB filters blob stored on the job
+// back into a statementWhereFilter so the download can replay the same query.
+func filtersToWhereFilter(orgID string, raw []byte) statementWhereFilter {
+	var m struct {
+		ProjectID  *string                 `json:"projectId"`
+		LRSID      *string                 `json:"lrsId"`
+		ClientID   *string                 `json:"clientId"`
+		ActorMbox  *fieldConditionReq      `json:"actorMbox"`
+		VerbID     *fieldConditionReq      `json:"verbId"`
+		ObjectID   *fieldConditionReq      `json:"objectId"`
+		StoredAt   *fieldConditionReq      `json:"storedAt"`
+		Extensions []extensionConditionReq `json:"extensions"`
 	}
-	s, ok := v.(string)
-	if !ok || s == "" {
-		return nil
+	_ = json.Unmarshal(raw, &m)
+	return statementWhereFilter{
+		OrgID:      orgID,
+		ProjectID:  normalizeOptionalString(m.ProjectID),
+		LRSID:      normalizeOptionalString(m.LRSID),
+		ClientID:   normalizeOptionalString(m.ClientID),
+		ActorMbox:  m.ActorMbox,
+		VerbID:     m.VerbID,
+		ObjectID:   m.ObjectID,
+		StoredAt:   m.StoredAt,
+		Extensions: m.Extensions,
 	}
-	return &s
 }
 
 func nullableJSONString(v []byte) any {

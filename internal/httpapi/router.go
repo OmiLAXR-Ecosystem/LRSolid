@@ -69,6 +69,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Handl
 					r.Post("/export/statements", RestCreateStatementExport(cfg, db))
 					r.Get("/user", RestListUsers(cfg, db))
 					r.Get("/user/count", RestCountUsers(cfg, db))
+					r.Post("/user/invite", RestInviteUser(cfg, db))
 					r.Get("/project", RestListProjects(cfg, db))
 					r.Post("/project", RestCreateProject(cfg, db))
 					r.Delete("/project/{id}", RestDeleteProject(cfg, db))

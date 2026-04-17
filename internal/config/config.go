@@ -22,6 +22,16 @@ type Config struct {
 	// Auth
 	JWTSecret string // Required in production. Set via JWT_SECRET env var.
 
+	// SMTP (for invitation emails)
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUser     string
+	SMTPPassword string
+	SMTPFrom     string
+
+	// App base URL (used in invite links)
+	AppURL string
+
 	// Async statement stats rollup
 	StatsRollupEnabled   bool
 	StatsRollupIntervalS int
@@ -37,6 +47,12 @@ func Load() (Config, error) {
 		MaxPageLimit:         getenvInt("MAX_PAGE_LIMIT", 100),
 		DefaultOrg:           getenv("DEFAULT_ORG", "default"),
 		JWTSecret:            getenv("JWT_SECRET", ""),
+		SMTPHost:             getenv("SMTP_HOST", ""),
+		SMTPPort:             getenvInt("SMTP_PORT", 587),
+		SMTPUser:             getenv("SMTP_USER", ""),
+		SMTPPassword:         getenv("SMTP_PASSWORD", ""),
+		SMTPFrom:             getenv("SMTP_FROM", "noreply@localhost"),
+		AppURL:               getenv("APP_URL", "http://localhost:5173"),
 		StatsRollupEnabled:   getenvBool("STATS_ROLLUP_ENABLED", true),
 		StatsRollupIntervalS: getenvInt("STATS_ROLLUP_INTERVAL_S", 15),
 		StatsRollupBatchSize: getenvInt("STATS_ROLLUP_BATCH_SIZE", 5000),

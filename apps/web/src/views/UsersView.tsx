@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { useUsers } from "../hooks/useUsers";
+import { useOrg } from "../contexts/OrgContext";
 import { Card } from "../components/ui/Card";
 import { FieldLabel } from "../components/ui/FieldLabel";
 import { TextInput } from "../components/ui/TextInput";
 import { SelectInput } from "../components/ui/SelectInput";
 import { Pagination } from "../components/ui/Pagination";
+import { InviteUserDialog } from "../components/users/InviteUserDialog";
 
 const ROLE_OPTIONS = [
     { label: "All roles", value: "All" },
@@ -13,6 +16,8 @@ const ROLE_OPTIONS = [
 
 export function UsersView() {
     const u = useUsers();
+    const { currentOrg } = useOrg();
+    const [inviteOpen, setInviteOpen] = useState(false);
 
     return (
         <div className="space-y-6">
@@ -26,6 +31,12 @@ export function UsersView() {
                         <FieldLabel>Role</FieldLabel>
                         <SelectInput value={u.role} onChange={u.setRole} options={ROLE_OPTIONS} />
                     </div>
+                    <button
+                        onClick={() => setInviteOpen(true)}
+                        className="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 transition whitespace-nowrap"
+                    >
+                        Benutzer einladen
+                    </button>
                 </div>
             </Card>
 
@@ -85,6 +96,15 @@ export function UsersView() {
                     totalPages={u.totalPages}
                 />
             </Card>
+
+            {currentOrg && (
+                <InviteUserDialog
+                    open={inviteOpen}
+                    org={currentOrg}
+                    onClose={() => setInviteOpen(false)}
+                    onSuccess={() => setInviteOpen(false)}
+                />
+            )}
         </div>
     );
 }

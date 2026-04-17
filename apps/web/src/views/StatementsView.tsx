@@ -1,25 +1,29 @@
-import { useEffect } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStatements } from "../hooks/useStatements";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { downloadStatementJson, fetchStatementById } from "../api/statements";
 import { StatementFilters } from "../components/statements/StatementFilters";
 import { StatementTable } from "../components/statements/StatementTable";
 import { StatementDetailModal } from "../components/statements/StatementDetailModal";
+import { ExportFilterForm } from "../components/exports/ExportFilterForm";
 import { Modal } from "../components/ui/Modal";
-import { FieldLabel } from "../components/ui/FieldLabel";
-import { SelectInput } from "../components/ui/SelectInput";
-import { TextInput } from "../components/ui/TextInput";
 import { useOrg } from "../contexts/OrgContext";
 import { fetchProjects, fetchLRSList } from "../api/lrs";
 import { fetchClients } from "../api/clients";
 import { createStatementExport, downloadExportJob, fetchExportJobs, fetchExportSettings } from "../api/export";
+import { emptyExportFilter } from "../types/export";
 import type { RestProject, RestLRS } from "../types/lrs";
 import type { RestClient } from "../types/client";
-import type { ExportJob } from "../types/export";
+import type { ExportFilterState, ExportJob } from "../types/export";
 
 const canExport = import.meta.env.VITE_CAN_EXPORT !== "false";
 const canVoid = import.meta.env.VITE_CAN_VOID !== "false";
+
+function fmtBytes(n: number): string {
+    if (n >= 1024 * 1024) return `${Math.round((n / (1024 * 1024)) * 10) / 10} MB`;
+    if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+    return `${n} B`;
+}
 
 export function StatementsView() {
     const confirm = useConfirm();
@@ -35,12 +39,8 @@ export function StatementsView() {
     const [projects, setProjects] = useState<RestProject[]>([]);
     const [lrsItems, setLrsItems] = useState<RestLRS[]>([]);
     const [clients, setClients] = useState<RestClient[]>([]);
-    const [projectId, setProjectId] = useState("");
-    const [lrsId, setLrsId] = useState("");
-    const [clientId, setClientId] = useState("");
-    const [targetType, setTargetType] = useState("");
-    const [targetPath, setTargetPath] = useState("");
     const [thresholdGB, setThresholdGB] = useState<number | null>(null);
+    const [filters, setFilters] = useState<ExportFilterState>(emptyExportFilter());
 
     const [jobs, setJobs] = useState<ExportJob[]>([]);
     const [jobsLoading, setJobsLoading] = useState(false);
@@ -105,21 +105,20 @@ export function StatementsView() {
         setSuccessMessage(null);
         try {
             const job = await createStatementExport(currentOrg, {
-                projectId: projectId || undefined,
-                lrsId: lrsId || undefined,
-                clientId: clientId || undefined,
+                projectId: filters.projectId || undefined,
+                lrsId: filters.lrsId || undefined,
+                clientId: filters.clientId || undefined,
+                actorMbox: filters.actorMbox ?? undefined,
+                verbId: filters.verbId ?? undefined,
+                objectId: filters.objectId ?? undefined,
+                storedAt: filters.storedAt ?? undefined,
+                extensions: filters.extensions.length > 0 ? filters.extensions : undefined,
                 format: "ndjson",
                 compression: "gzip",
-                targetType: (targetType as "s3" | "gdrive" | "onedrive" | "icloud") || undefined,
-                targetPath: targetPath || undefined,
+                targetType: (filters.targetType as "s3" | "gdrive" | "onedrive" | "icloud") || undefined,
+                targetPath: filters.targetPath || undefined,
             });
-            const estBytes = job.estimatedBytes;
-            const estLabel = estBytes >= 1024 * 1024
-                ? `${Math.round((estBytes / (1024 * 1024)) * 10) / 10} MB`
-                : estBytes >= 1024
-                ? `${Math.round(estBytes / 1024)} KB`
-                : `${estBytes} B`;
-            setSuccessMessage(`Export created — ~${estLabel} estimated`);
+            setSuccessMessage(`Export created — ~${fmtBytes(job.estimatedBytes)} estimated`);
             await loadJobs();
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to create export");
@@ -148,9 +147,7 @@ export function StatementsView() {
 
     const footer = (
         <>
-            <div className="text-xs text-slate-500">
-                {thresholdGB !== null ? `Remote target required above ${thresholdGB} GB` : ""}
-            </div>
+            <div />
             <div className="flex items-center gap-2">
                 <button
                     onClick={() => setOpen(false)}
@@ -215,67 +212,23 @@ export function StatementsView() {
             />
             <Modal open={open} onClose={() => setOpen(false)} title="Export Statements" footer={footer} maxWidth="max-w-4xl">
                 <div className="space-y-6">
-                    {/* New export form */}
-                    <div className="space-y-4">
-                        {error && <div className="text-sm text-red-600">{error}</div>}
-                        {successMessage && <div className="text-sm text-emerald-700">{successMessage}</div>}
-                        {initLoading && <div className="text-sm text-slate-400">Loading options...</div>}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <FieldLabel>Project</FieldLabel>
-                                <SelectInput
-                                    value={projectId}
-                                    onChange={setProjectId}
-                                    options={[{ label: "All Projects", value: "" }, ...projects.map((p) => ({ label: p.name, value: p.id }))]}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <FieldLabel>LRS</FieldLabel>
-                                <SelectInput
-                                    value={lrsId}
-                                    onChange={setLrsId}
-                                    options={[{ label: "All LRS", value: "" }, ...lrsItems.map((l) => ({ label: l.name, value: l.id }))]}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <FieldLabel>Client</FieldLabel>
-                                <SelectInput
-                                    value={clientId}
-                                    onChange={setClientId}
-                                    options={[{ label: "All Clients", value: "" }, ...clients.map((c) => ({ label: c.name, value: c.id }))]}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <FieldLabel>Target Type</FieldLabel>
-                                <SelectInput
-                                    value={targetType}
-                                    onChange={setTargetType}
-                                    options={[
-                                        { label: "Local (no target)", value: "" },
-                                        { label: "S3", value: "s3" },
-                                        { label: "Google Drive", value: "gdrive" },
-                                        { label: "OneDrive", value: "onedrive" },
-                                        { label: "iCloud", value: "icloud" },
-                                    ]}
-                                />
-                            </div>
-                        </div>
-                        {targetType && (
-                            <div className="space-y-1">
-                                <FieldLabel>Target Path / Folder</FieldLabel>
-                                <TextInput
-                                    value={targetPath}
-                                    onChange={setTargetPath}
-                                    placeholder="e.g. s3://my-bucket/exports/ or Drive folder ID"
-                                />
-                            </div>
-                        )}
-                    </div>
+                    {error && <div className="text-sm text-red-600">{error}</div>}
+                    {successMessage && <div className="text-sm text-emerald-700">{successMessage}</div>}
+
+                    <ExportFilterForm
+                        value={filters}
+                        onChange={setFilters}
+                        projects={projects}
+                        lrsItems={lrsItems}
+                        clients={clients}
+                        thresholdGB={thresholdGB}
+                        loading={initLoading}
+                    />
 
                     {/* Export history */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Previous Exports</div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Previous Exports</div>
                             <button
                                 onClick={() => void loadJobs()}
                                 disabled={jobsLoading}
@@ -286,12 +239,8 @@ export function StatementsView() {
                         </div>
                         {jobsError && <div className="text-sm text-red-600">{jobsError}</div>}
                         {downloadError && <div className="text-sm text-red-600">{downloadError}</div>}
-                        {jobsLoading && jobs.length === 0 && (
-                            <div className="text-sm text-slate-400">Loading...</div>
-                        )}
-                        {!jobsLoading && jobs.length === 0 && (
-                            <div className="text-sm text-slate-400">No exports yet.</div>
-                        )}
+                        {jobsLoading && jobs.length === 0 && <div className="text-sm text-slate-400">Loading...</div>}
+                        {!jobsLoading && jobs.length === 0 && <div className="text-sm text-slate-400">No exports yet.</div>}
                         {jobs.length > 0 && (
                             <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
                                 <table className="min-w-full text-sm">
@@ -318,16 +267,8 @@ export function StatementsView() {
                                                         {j.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-3 py-2 text-slate-500 text-xs">
-                                                    {j.estimatedBytes >= 1024 * 1024
-                                                        ? `${Math.round((j.estimatedBytes / (1024 * 1024)) * 10) / 10} MB`
-                                                        : j.estimatedBytes >= 1024
-                                                        ? `${Math.round(j.estimatedBytes / 1024)} KB`
-                                                        : `${j.estimatedBytes} B`}
-                                                </td>
-                                                <td className="px-3 py-2 text-slate-500 text-xs">
-                                                    {j.targetType ?? "local"}
-                                                </td>
+                                                <td className="px-3 py-2 text-slate-500 text-xs">{fmtBytes(j.estimatedBytes)}</td>
+                                                <td className="px-3 py-2 text-slate-500 text-xs">{j.targetType ?? "local"}</td>
                                                 <td className="px-3 py-2">
                                                     {j.artifactRef ? (
                                                         <a
