@@ -1,6 +1,11 @@
 export type ExportSettings = {
   requireRemoteTargetAboveBytes: number;
   localMaxBytes: number;
+  defaultTargetType: "local" | "s3" | "gdrive" | "onedrive" | "icloud";
+  s3UploadBaseUrl?: string;
+  s3PublicBaseUrl?: string;
+  s3AuthToken?: string;
+  s3PathPrefix: string;
 };
 
 export type UpdateExportSettingsPayload = Partial<ExportSettings>;

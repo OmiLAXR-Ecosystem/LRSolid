@@ -14,6 +14,15 @@ type Registry struct {
 
 var Global = &Registry{byID: make(map[string]WidgetPlugin)}
 
+// NewFrom creates a new Registry pre-populated with the same plugins as base.
+func NewFrom(base *Registry) *Registry {
+	r := &Registry{byID: make(map[string]WidgetPlugin)}
+	for _, p := range base.widgets {
+		r.Register(p)
+	}
+	return r
+}
+
 func (r *Registry) Register(p WidgetPlugin) {
 	r.widgets = append(r.widgets, p)
 	if r.byID == nil {

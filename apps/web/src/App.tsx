@@ -14,6 +14,9 @@ import { OrganizationsView } from "./views/OrganizationsView";
 import { SettingsView } from "./views/SettingsView";
 import { LoginView } from "./views/LoginView";
 import { PlaceholderView } from "./views/PlaceholderView";
+import { PluginsView } from "./views/PluginsView";
+import { ProfileView } from "./views/ProfileView";
+import { listenNavigation, navigate } from "./lib/navigation";
 
 type RouteConfig = {
     activeKey: NavKey;
@@ -22,21 +25,22 @@ type RouteConfig = {
 };
 
 const ROUTES: Record<string, RouteConfig> = {
-    dashboard:     { activeKey: "dashboard",   searchPlaceholder: "Search...",            content: <LRSolidDashboard /> },
-    statements:    { activeKey: "statements",  searchPlaceholder: "Search statements...", content: <StatementsView /> },
-    users:         { activeKey: "users",       searchPlaceholder: "Search users...",      content: <UsersView /> },
-    clients:       { activeKey: "clients",                                                content: <ClientsView /> },
-    projects:      { activeKey: "projects",                                               content: <ProjectsView /> },
-    reports:       { activeKey: "reports",                                                content: <PlaceholderView title="Reports" /> },
-    datasources:   { activeKey: "datasources",                                            content: <LRSView /> },
-    marketplace:   { activeKey: "marketplace",                                            content: <PlaceholderView title="Plugin Marketplace" /> },
-    settings:      { activeKey: "settings",                                               content: <SettingsView /> },
-    organizations: { activeKey: "organizations",                                          content: <OrganizationsView /> },
+    dashboard: { activeKey: "dashboard", searchPlaceholder: "Search...", content: <LRSolidDashboard /> },
+    statements: { activeKey: "statements", searchPlaceholder: "Search statements...", content: <StatementsView /> },
+    users: { activeKey: "users", searchPlaceholder: "Search users...", content: <UsersView /> },
+    clients: { activeKey: "clients", content: <ClientsView /> },
+    projects: { activeKey: "projects", content: <ProjectsView /> },
+    reports: { activeKey: "reports", content: <PlaceholderView title="Reports" /> },
+    datasources: { activeKey: "datasources", content: <LRSView /> },
+    marketplace: { activeKey: "marketplace", content: <PluginsView /> },
+    settings: { activeKey: "settings", content: <SettingsView /> },
+    organizations: { activeKey: "organizations", content: <OrganizationsView /> },
 };
 
-/** Parse `#/:org/route` — returns org slug (or "") and route name. */
-function parseHash(hash: string): { org: string; route: string } {
-    const cleaned = hash.replace(/^#\/?/, "");
+/** Parse `/:org/route` — returns org slug (or "") and route name. */
+function parsePath(pathname: string): { org: string; route: string } {
+    const cleaned = pathname.replace(/^\/+|\/+$/g, "");
+    if (!cleaned) return { org: "", route: "dashboard" };
     const parts = cleaned.split("/");
     const org = parts[0] ?? "";
     const routeWithQuery = parts.slice(1).join("/") || "dashboard";
@@ -46,13 +50,16 @@ function parseHash(hash: string): { org: string; route: string } {
 
 function AppShell() {
     const { state } = useAuth();
-    const [hash, setHash] = useState(() => window.location.hash);
+    const [pathname, setPathname] = useState(() => window.location.pathname);
 
     useEffect(() => {
-        if (!window.location.hash) window.location.hash = "#/dashboard";
-        const handler = () => setHash(window.location.hash);
-        window.addEventListener("hashchange", handler);
-        return () => window.removeEventListener("hashchange", handler);
+        // Migrate old hash URLs like `#/default/statements` to `/default/statements`.
+        if (window.location.hash.startsWith("#/")) {
+            navigate(window.location.hash.slice(1), { replace: true });
+        }
+
+        const syncLocation = () => setPathname(window.location.pathname);
+        return listenNavigation(syncLocation);
     }, []);
 
     if (state.status === "loading") {
@@ -67,7 +74,15 @@ function AppShell() {
         return <LoginView />;
     }
 
-    const { route } = parseHash(hash);
+    if (pathname === "/profile") {
+        return (
+            <AdminShell activeKey="profile">
+                <ProfileView />
+            </AdminShell>
+        );
+    }
+
+    const { route } = parsePath(pathname);
     const { activeKey, searchPlaceholder, content } = ROUTES[route] ?? ROUTES.dashboard;
 
     return (

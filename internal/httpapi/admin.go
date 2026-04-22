@@ -2,9 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -86,6 +89,71 @@ func getOrgID(ctx context.Context, db *pgxpool.Pool, slug string) (string, error
 		return "", nil
 	}
 	return id, err
+}
+
+func requireAdminClaims(ctx context.Context) (auth.Claims, bool) {
+	claims, ok := auth.ClaimsFromContext(ctx)
+	if !ok {
+		return auth.Claims{}, false
+	}
+	if claims.Role != "admin" && claims.Role != "owner" {
+		return auth.Claims{}, false
+	}
+	return claims, true
+}
+
+func isValidOrgRole(role string) bool {
+	switch role {
+	case "owner", "admin", "member", "viewer":
+		return true
+	default:
+		return false
+	}
+}
+
+var orgSlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
+func slugifyOrgName(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	var b strings.Builder
+	b.Grow(len(s))
+
+	lastWasDash := false
+	for _, r := range s {
+		isAZ := r >= 'a' && r <= 'z'
+		is09 := r >= '0' && r <= '9'
+		if isAZ || is09 {
+			b.WriteRune(r)
+			lastWasDash = false
+			continue
+		}
+		if b.Len() > 0 && !lastWasDash {
+			b.WriteByte('-')
+			lastWasDash = true
+		}
+	}
+
+	base := strings.Trim(b.String(), "-")
+	if base == "" {
+		return "org"
+	}
+	return base
+}
+
+func randomShortIDHex(bytes int) (string, error) {
+	b := make([]byte, bytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func generatedOrgSlug(name string) (string, error) {
+	shortID, err := randomShortIDHex(3)
+	if err != nil {
+		return "", err
+	}
+	return slugifyOrgName(name) + "-" + shortID, nil
 }
 
 // ---- Dashboard ----
@@ -277,6 +345,83 @@ type adminUsersResponse struct {
 	Offset int         `json:"offset"`
 }
 
+type createOrgRequest struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+func AdminCreateOrg(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if _, ok := requireAdminClaims(ctx); !ok {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: "admin access required"})
+			return
+		}
+
+		var req createOrgRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+
+		req.Name = strings.TrimSpace(req.Name)
+		req.Slug = strings.ToLower(strings.TrimSpace(req.Slug))
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "name is required"})
+			return
+		}
+		if req.Slug != "" && !orgSlugPattern.MatchString(req.Slug) {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "slug must match [a-z0-9-] and cannot start/end with '-'"})
+			return
+		}
+
+		insertWithSlug := func(slug string) (restOrg, error) {
+			var org restOrg
+			err := db.QueryRow(ctx, `
+				INSERT INTO organisations (slug, name)
+				VALUES ($1, $2)
+				RETURNING id, slug, name, statement_count
+			`, slug, req.Name).Scan(&org.ID, &org.Slug, &org.Name, &org.StatementCount)
+			return org, err
+		}
+
+		if req.Slug != "" {
+			org, err := insertWithSlug(req.Slug)
+			if err != nil {
+				if strings.Contains(err.Error(), "organisations_slug_key") {
+					writeJSON(w, http.StatusConflict, errorResponse{Error: "organization slug already exists"})
+					return
+				}
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create organization failed"})
+				return
+			}
+			writeJSON(w, http.StatusCreated, org)
+			return
+		}
+
+		for i := 0; i < 5; i++ {
+			autoSlug, err := generatedOrgSlug(req.Name)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create organization failed"})
+				return
+			}
+			org, err := insertWithSlug(autoSlug)
+			if err != nil {
+				if strings.Contains(err.Error(), "organisations_slug_key") {
+					continue
+				}
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create organization failed"})
+				return
+			}
+			writeJSON(w, http.StatusCreated, org)
+			return
+		}
+
+		writeJSON(w, http.StatusConflict, errorResponse{Error: "organization slug already exists"})
+		return
+	}
+}
+
 func AdminListUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -365,22 +510,34 @@ type createUserRequest struct {
 	DisplayName *string `json:"displayName,omitempty"`
 	Password    string  `json:"password"`
 	Role        string  `json:"role"`
+	OrgSlug     string  `json:"orgSlug"`
 }
 
-func AdminCreateUser(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+func AdminCreateUser(_ config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		if _, ok := requireAdminClaims(ctx); !ok {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: "admin access required"})
+			return
+		}
+
 		var req createUserRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
 			return
 		}
-		if req.Email == "" || req.Password == "" || req.Role == "" {
-			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "email, password, role are required"})
+		req.Email = strings.TrimSpace(req.Email)
+		req.OrgSlug = strings.TrimSpace(req.OrgSlug)
+		if req.Email == "" || req.Password == "" || req.Role == "" || req.OrgSlug == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "email, password, role, orgSlug are required"})
+			return
+		}
+		if !isValidOrgRole(req.Role) {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "role must be owner, admin, member, or viewer"})
 			return
 		}
 
-		orgID, err := getOrgID(ctx, db, cfg.DefaultOrg)
+		orgID, err := getOrgID(ctx, db, req.OrgSlug)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup org failed"})
 			return
@@ -437,6 +594,75 @@ func AdminCreateUser(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			Name:  req.DisplayName,
 			Email: req.Email,
 			Role:  req.Role,
+		})
+	}
+}
+
+type assignUserToOrgRequest struct {
+	Email   string `json:"email"`
+	OrgSlug string `json:"orgSlug"`
+	Role    string `json:"role"`
+}
+
+func AdminAssignUserToOrg(_ config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if _, ok := requireAdminClaims(ctx); !ok {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: "admin access required"})
+			return
+		}
+
+		var req assignUserToOrgRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+
+		req.Email = strings.TrimSpace(req.Email)
+		req.OrgSlug = strings.TrimSpace(req.OrgSlug)
+		if req.Email == "" || req.OrgSlug == "" || req.Role == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "email, orgSlug and role are required"})
+			return
+		}
+		if !isValidOrgRole(req.Role) {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "role must be owner, admin, member, or viewer"})
+			return
+		}
+
+		orgID, err := getOrgID(ctx, db, req.OrgSlug)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup org failed"})
+			return
+		}
+		if orgID == "" {
+			writeJSON(w, http.StatusNotFound, errorResponse{Error: "organization not found"})
+			return
+		}
+
+		var userID string
+		if err := db.QueryRow(ctx, `SELECT id FROM users WHERE email=$1`, req.Email).Scan(&userID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, errorResponse{Error: "user not found"})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup user failed"})
+			return
+		}
+
+		if _, err := db.Exec(ctx, `
+			INSERT INTO org_memberships (org_id, user_id, role)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role
+		`, orgID, userID, req.Role); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "assign user failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"userId":  userID,
+			"email":   req.Email,
+			"orgSlug": req.OrgSlug,
+			"role":    req.Role,
 		})
 	}
 }

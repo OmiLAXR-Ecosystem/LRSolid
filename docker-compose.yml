@@ -23,6 +23,9 @@ services:
       PG_DSN: "postgres://lrsolid:lrsolid@postgres:5432/lrsolid?sslmode=disable"
       JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
       DEFAULT_ORG: "${DEFAULT_ORG:-default}"
+      PLUGINS_DIR: "/plugins"
+    volumes:
+      - ./plugins:/plugins
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,4 +1,5 @@
 import { Card } from "../../components/Card";
+import { navigate } from "../../lib/navigation";
 import type { WidgetPlugin } from "../types";
 
 type Statement = {
@@ -63,7 +64,16 @@ export const RecentStatementsWidget: WidgetPlugin<Statement[]> = {
             </div>
           ))}
           <div className="text-right">
-            <a href={`#/${orgSlug}/statements`} className="text-sm font-semibold text-teal-600 hover:text-teal-700">View All</a>
+            <a
+              href={`/${orgSlug}/statements`}
+              onClick={(e) => {
+                e.preventDefault();
+                navigate(`/${orgSlug}/statements`);
+              }}
+              className="text-sm font-semibold text-teal-600 hover:text-teal-700"
+            >
+              View All
+            </a>
           </div>
         </div>
       </Card>

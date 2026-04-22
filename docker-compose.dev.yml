@@ -23,11 +23,13 @@ services:
       PG_DSN: "postgres://lrsolid:lrsolid@postgres:5432/lrsolid?sslmode=disable"
       JWT_SECRET: "dev-only-insecure-secret-change-me"
       DEFAULT_ORG: "default"
+      PLUGINS_DIR: "/plugins"
     volumes:
       # Mount entire repo so air sees all Go source changes
       - .:/src
       - go_cache:/root/go/pkg/mod
       - air_tmp:/tmp/air
+      - ./plugins:/plugins
     depends_on:
       postgres:
         condition: service_healthy

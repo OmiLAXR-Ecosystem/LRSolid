@@ -49,11 +49,7 @@ export function StatementsView() {
     const [downloadError, setDownloadError] = useState<string | null>(null);
 
     useEffect(() => {
-        const hash = window.location.hash;
-        const qIndex = hash.indexOf("?");
-        if (qIndex < 0) return;
-        const query = hash.slice(qIndex + 1);
-        const id = new URLSearchParams(query).get("statementId");
+        const id = new URLSearchParams(window.location.search).get("statementId");
         if (!id) return;
         void stmts.openDetail(id);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -90,6 +86,11 @@ export function StatementsView() {
             setLrsItems(lrsRes.items ?? []);
             setClients(clientsRes.items ?? []);
             setThresholdGB(Math.round((settings.requireRemoteTargetAboveBytes / (1024 * 1024 * 1024)) * 100) / 100);
+            setFilters((prev) => ({
+                ...prev,
+                targetType: settings.defaultTargetType === "local" ? "" : settings.defaultTargetType,
+                targetPath: "",
+            }));
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to load export options");
         } finally {

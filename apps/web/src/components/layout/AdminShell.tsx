@@ -1,13 +1,13 @@
-import { type ReactNode } from "react";
+import { type MouseEvent, type ReactNode } from "react";
 import {
     LayoutDashboard, FileText, Users, BarChart2,
     Database, Store, KeyRound, Search, Bell,
     Calendar, ChevronDown, LogOut, FolderOpen, ShieldCheck,
-    Building2,
 } from "lucide-react";
 import Logo from "../../assets/LRSolid_Logo.png";
 import { useAuth } from "../../contexts/AuthContext";
-import { useOrg, ALL_ORGS } from "../../contexts/OrgContext";
+import { useOrg } from "../../contexts/OrgContext";
+import { navigate } from "../../lib/navigation";
 
 export type NavKey =
     | "dashboard"
@@ -19,7 +19,8 @@ export type NavKey =
     | "datasources"
     | "marketplace"
     | "settings"
-    | "organizations";
+    | "organizations"
+    | "profile";
 
 type AdminShellProps = {
     activeKey: NavKey;
@@ -36,24 +37,26 @@ type NavItem = {
 
 function buildNavItems(org: string): NavItem[] {
     return [
-        { key: "dashboard",   label: "Dashboard",              href: `#/${org}/dashboard`,   icon: <LayoutDashboard className="h-5 w-5" /> },
-        { key: "statements",  label: "Statements",             href: `#/${org}/statements`,  icon: <FileText className="h-5 w-5" /> },
-        { key: "users",       label: "Users",                  href: `#/${org}/users`,       icon: <Users className="h-5 w-5" /> },
-        { key: "clients",     label: "Clients",                href: `#/${org}/clients`,     icon: <KeyRound className="h-5 w-5" /> },
-        { key: "projects",    label: "Projects",               href: `#/${org}/projects`,    icon: <FolderOpen className="h-5 w-5" /> },
-        { key: "reports",     label: "Reports",                href: `#/${org}/reports`,     icon: <BarChart2 className="h-5 w-5" /> },
-        { key: "datasources", label: "Learning Record Stores", href: `#/${org}/datasources`, icon: <Database className="h-5 w-5" /> },
+        { key: "dashboard",   label: "Dashboard",              href: `/${org}/dashboard`,   icon: <LayoutDashboard className="h-5 w-5" /> },
+        { key: "statements",  label: "Statements",             href: `/${org}/statements`,  icon: <FileText className="h-5 w-5" /> },
+        { key: "users",       label: "Users",                  href: `/${org}/users`,       icon: <Users className="h-5 w-5" /> },
+        { key: "clients",     label: "Clients",                href: `/${org}/clients`,     icon: <KeyRound className="h-5 w-5" /> },
+        { key: "projects",    label: "Projects",               href: `/${org}/projects`,    icon: <FolderOpen className="h-5 w-5" /> },
+        { key: "reports",     label: "Reports",                href: `/${org}/reports`,     icon: <BarChart2 className="h-5 w-5" /> },
+        { key: "datasources", label: "Learning Record Stores", href: `/${org}/datasources`, icon: <Database className="h-5 w-5" /> },
     ];
 }
 
-const ALL_ORGS_NAV: NavItem[] = [
-    { key: "organizations", label: "Organizations", href: `#/${ALL_ORGS}/organizations`, icon: <Building2 className="h-5 w-5" /> },
-];
-
 function SidebarItem({ item, active }: { item: NavItem; active: boolean }) {
+    const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault();
+        navigate(item.href);
+    };
+
     return (
         <a
             href={item.href}
+            onClick={onClick}
             aria-current={active ? "page" : undefined}
             className={[
                 "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition",
@@ -72,9 +75,8 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
     const user = state.status === "authenticated" ? state.user : null;
 
     const canSeeAllOrgs = user?.role === "admin" || user?.role === "owner";
-    const isAllOrgs = currentOrg === ALL_ORGS;
-    const navItems = isAllOrgs ? ALL_ORGS_NAV : buildNavItems(currentOrg);
-    const marketplaceHref = isAllOrgs ? `#/${ALL_ORGS}/organizations` : `#/${currentOrg}/marketplace`;
+    const navItems = buildNavItems(currentOrg);
+    const marketplaceHref = `/${currentOrg}/marketplace`;
 
     return (
         <div className="h-screen max-h-screen overflow-hidden bg-slate-100 text-slate-900">
@@ -96,9 +98,6 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                                     {orgs.map((o) => (
                                         <option key={o.slug} value={o.slug} className="text-slate-900">{o.name}</option>
                                     ))}
-                                    {canSeeAllOrgs && (
-                                        <option value={ALL_ORGS} className="text-slate-900 font-semibold">— All Organizations —</option>
-                                    )}
                                 </select>
                                 <ChevronDown className="h-4 w-4 text-white/70 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                             </div>
@@ -110,18 +109,20 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                             ))}
                         </nav>
 
-                        {!isAllOrgs && (
-                            <div className="mt-auto p-4">
-                                <a
-                                    href={marketplaceHref}
-                                    aria-current={activeKey === "marketplace" ? "page" : undefined}
-                                    className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
-                                >
-                                    <Store className="h-5 w-5" />
-                                    Plugin Marketplace
-                                </a>
-                            </div>
-                        )}
+                        <div className="mt-auto p-4">
+                            <a
+                                href={marketplaceHref}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    navigate(marketplaceHref);
+                                }}
+                                aria-current={activeKey === "marketplace" ? "page" : undefined}
+                                className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
+                            >
+                                <Store className="h-5 w-5" />
+                                Plugin Marketplace
+                            </a>
+                        </div>
                     </aside>
 
                     <main className="min-h-0 flex flex-col gap-6">
@@ -146,7 +147,11 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                                 </button>
                                 {canSeeAllOrgs && (
                                     <a
-                                        href={`#/${currentOrg}/settings`}
+                                        href={`/${currentOrg}/settings`}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            navigate(`/${currentOrg}/settings`);
+                                        }}
                                         title="Admin Panel"
                                         aria-current={activeKey === "settings" ? "page" : undefined}
                                         className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center"
@@ -155,15 +160,22 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                                     </a>
                                 )}
                                 <div className="flex items-center gap-2 pl-2">
-                                    <div className="h-9 w-9 rounded-full bg-teal-100 ring-1 ring-teal-200 grid place-items-center text-teal-700 text-sm font-semibold select-none">
-                                        {user?.email?.[0]?.toUpperCase() ?? "?"}
-                                    </div>
-                                    <div className="hidden sm:block">
-                                        <div className="text-xs font-semibold text-slate-700 leading-tight max-w-[120px] truncate">
-                                            {user?.email ?? ""}
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate("/profile")}
+                                        title="Profile"
+                                        className="flex min-w-0 items-center gap-2 rounded-xl px-1.5 py-1 text-left transition hover:bg-slate-50"
+                                    >
+                                        <div className="h-9 w-9 rounded-full bg-teal-100 ring-1 ring-teal-200 grid place-items-center text-teal-700 text-sm font-semibold select-none">
+                                            {user?.email?.[0]?.toUpperCase() ?? "?"}
                                         </div>
-                                        <div className="text-[10px] text-slate-400 capitalize">{user?.role ?? ""}</div>
-                                    </div>
+                                        <div className="hidden min-w-0 sm:block">
+                                            <div className="max-w-[160px] truncate whitespace-nowrap text-xs font-semibold leading-tight text-slate-700">
+                                                {user?.email ?? ""}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 capitalize">{user?.role ?? ""}</div>
+                                        </div>
+                                    </button>
                                     <button
                                         onClick={() => void logout()}
                                         title="Sign out"
@@ -171,7 +183,6 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                                     >
                                         <LogOut className="h-4 w-4 text-slate-500 hover:text-red-500" />
                                     </button>
-                                    <ChevronDown className="h-4 w-4 text-slate-500" />
                                 </div>
                             </div>
                         </div>

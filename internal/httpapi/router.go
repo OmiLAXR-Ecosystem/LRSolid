@@ -58,6 +58,11 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 			r.Route("/v1", func(r chi.Router) {
 				// Organisation list (no org param required)
 				r.Get("/org", RestListOrgs(cfg, db))
+				r.Route("/admin", func(r chi.Router) {
+					r.Post("/org", AdminCreateOrg(db))
+					r.Post("/user", AdminCreateUser(cfg, db))
+					r.Post("/user/assign", AdminAssignUserToOrg(cfg, db))
+				})
 
 				// Org-scoped endpoints
 				r.Route("/{org}", func(r chi.Router) {
@@ -71,6 +76,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 					r.Get("/export/jobs/{id}", RestGetExportJob(cfg, db))
 					r.Get("/export/jobs/{id}/download", RestDownloadExportJob(cfg, db))
 					r.Post("/export/statements", RestCreateStatementExport(cfg, db))
+					r.Get("/plugins", RestListPlugins(cfg, db, registry))
 					r.Get("/user", RestListUsers(cfg, db))
 					r.Get("/user/count", RestCountUsers(cfg, db))
 					r.Post("/user/invite", RestInviteUser(cfg, db))

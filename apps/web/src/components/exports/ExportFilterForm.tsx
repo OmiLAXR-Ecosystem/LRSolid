@@ -330,7 +330,7 @@ export function ExportFilterForm({ value, onChange, projects, lrsItems, clients,
                             <TextInput
                                 value={value.targetPath}
                                 onChange={(v) => set("targetPath", v)}
-                                placeholder="e.g. s3://my-bucket/exports/ or Drive folder ID"
+                                placeholder="e.g. exports/my-job.ndjson.gz or provider folder path"
                             />
                         </div>
                     )}
