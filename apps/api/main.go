@@ -22,6 +22,8 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/plugins/builtin"
 	"github.com/SGoerzen/LRSolid/internal/plugins/jsplugin"
 	"github.com/SGoerzen/LRSolid/internal/statsrollup"
+	"github.com/SGoerzen/LRSolid/internal/store"
+	mgstore "github.com/SGoerzen/LRSolid/internal/store/mongodb"
 	pgstore "github.com/SGoerzen/LRSolid/internal/store/postgres"
 )
 
@@ -58,8 +60,35 @@ func main() {
 	}
 	defer db.Close()
 
-	stmtStore := pgstore.NewStatementStore(db)
-	svc := lrs.NewService(stmtStore)
+	storeRegistry := store.NewRegistry()
+	storeRegistry.RegisterFactory("postgres", pgstore.NewStoreBundle)
+	storeRegistry.RegisterFactory("mongodb", mgstore.NewStoreBundle)
+
+	// Load all active data stores with a connection string and register them.
+	dsRows, err := db.Query(ctx, `
+		SELECT id::text, name, database_type, connection_string
+		FROM data_stores
+		WHERE is_active = true AND connection_string IS NOT NULL AND connection_string != ''
+	`)
+	if err != nil {
+		log.Fatal().Err(err).Msg("load data stores failed")
+	}
+	for dsRows.Next() {
+		var cfg store.DataStoreConfig
+		if err := dsRows.Scan(&cfg.ID, &cfg.Name, &cfg.DatabaseType, &cfg.ConnectionString); err != nil {
+			log.Fatal().Err(err).Msg("scan data store failed")
+		}
+		if err := storeRegistry.Register(ctx, cfg); err != nil {
+			log.Warn().Err(err).Str("name", cfg.Name).Msg("data store registration failed, skipping")
+		} else {
+			log.Info().Str("name", cfg.Name).Str("type", cfg.DatabaseType).Msg("data store registered")
+		}
+	}
+	dsRows.Close()
+
+	// Default fallback: the control-plane Postgres (no connection_string needed).
+	fallbackStmtStore := pgstore.NewStatementStore(db)
+	svc := lrs.NewService(storeRegistry, fallbackStmtStore)
 
 	registry := plugins.Global
 	builtin.Register(registry)

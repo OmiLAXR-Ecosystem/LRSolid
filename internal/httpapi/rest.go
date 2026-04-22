@@ -125,15 +125,35 @@ type createProjectRequest struct {
 }
 
 type restDataStore struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	DatabaseType string `json:"databaseType"`
-	Host         string `json:"host"`
-	IsDefault    bool   `json:"isDefault"`
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	DatabaseType        string    `json:"databaseType"`
+	OrgID               *string   `json:"orgId,omitempty"`
+	IsDefault           bool      `json:"isDefault"`
+	IsActive            bool      `json:"isActive"`
+	HasConnectionString bool      `json:"hasConnectionString"`
+	Description         *string   `json:"description,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
 }
 
 type restDataStoreListResponse struct {
 	Items []restDataStore `json:"items"`
+}
+
+type createDataStoreRequest struct {
+	Name             string  `json:"name"`
+	DatabaseType     string  `json:"databaseType"`
+	ConnectionString string  `json:"connectionString"`
+	Description      *string `json:"description,omitempty"`
+	OrgID            *string `json:"orgId,omitempty"`
+}
+
+type updateDataStoreRequest struct {
+	Name             *string `json:"name,omitempty"`
+	ConnectionString *string `json:"connectionString,omitempty"`
+	Description      *string `json:"description,omitempty"`
+	IsActive         *bool   `json:"isActive,omitempty"`
 }
 
 type restOrg struct {
@@ -983,7 +1003,9 @@ func RestDeleteProject(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 func RestListDataStores(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := db.Query(r.Context(), `
-			SELECT id, name, database_type, host, is_default
+			SELECT id, name, database_type, org_id, is_default, is_active,
+			       (connection_string IS NOT NULL AND connection_string != '') AS has_connection_string,
+			       description, created_at, updated_at
 			FROM data_stores
 			WHERE is_active = true
 			ORDER BY is_default DESC, name ASC
@@ -997,7 +1019,11 @@ func RestListDataStores(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		items := make([]restDataStore, 0, 8)
 		for rows.Next() {
 			var ds restDataStore
-			if err := rows.Scan(&ds.ID, &ds.Name, &ds.DatabaseType, &ds.Host, &ds.IsDefault); err != nil {
+			if err := rows.Scan(
+				&ds.ID, &ds.Name, &ds.DatabaseType, &ds.OrgID,
+				&ds.IsDefault, &ds.IsActive, &ds.HasConnectionString,
+				&ds.Description, &ds.CreatedAt, &ds.UpdatedAt,
+			); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan data stores failed"})
 				return
 			}
@@ -1009,6 +1035,110 @@ func RestListDataStores(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, restDataStoreListResponse{Items: items})
+	}
+}
+
+func AdminCreateDataStore(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req createDataStoreRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+		req.Name = strings.TrimSpace(req.Name)
+		req.ConnectionString = strings.TrimSpace(req.ConnectionString)
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "name required"})
+			return
+		}
+		if req.DatabaseType != "postgres" && req.DatabaseType != "mongodb" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "databaseType must be postgres or mongodb"})
+			return
+		}
+		if req.ConnectionString == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "connectionString required"})
+			return
+		}
+
+		var ds restDataStore
+		err := db.QueryRow(r.Context(), `
+			INSERT INTO data_stores (name, database_type, connection_string, description, org_id)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING id, name, database_type, org_id, is_default, is_active,
+			          (connection_string IS NOT NULL AND connection_string != ''),
+			          description, created_at, updated_at
+		`, req.Name, req.DatabaseType, req.ConnectionString, req.Description, req.OrgID).Scan(
+			&ds.ID, &ds.Name, &ds.DatabaseType, &ds.OrgID,
+			&ds.IsDefault, &ds.IsActive, &ds.HasConnectionString,
+			&ds.Description, &ds.CreatedAt, &ds.UpdatedAt,
+		)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create data store failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, ds)
+	}
+}
+
+func AdminUpdateDataStore(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		var req updateDataStoreRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+
+		var ds restDataStore
+		err := db.QueryRow(r.Context(), `
+			UPDATE data_stores SET
+			  name             = COALESCE($2, name),
+			  connection_string = COALESCE($3, connection_string),
+			  description      = COALESCE($4, description),
+			  is_active        = COALESCE($5, is_active),
+			  updated_at       = now()
+			WHERE id = $1
+			RETURNING id, name, database_type, org_id, is_default, is_active,
+			          (connection_string IS NOT NULL AND connection_string != ''),
+			          description, created_at, updated_at
+		`, id, req.Name, req.ConnectionString, req.Description, req.IsActive).Scan(
+			&ds.ID, &ds.Name, &ds.DatabaseType, &ds.OrgID,
+			&ds.IsDefault, &ds.IsActive, &ds.HasConnectionString,
+			&ds.Description, &ds.CreatedAt, &ds.UpdatedAt,
+		)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "update data store failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, ds)
+	}
+}
+
+func AdminDeleteDataStore(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		var isDefault bool
+		err := db.QueryRow(r.Context(), `SELECT is_default FROM data_stores WHERE id = $1`, id).Scan(&isDefault)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, errorResponse{Error: "data store not found"})
+			return
+		}
+		if isDefault {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "cannot delete the default data store"})
+			return
+		}
+
+		_, err = db.Exec(r.Context(), `DELETE FROM data_stores WHERE id = $1 AND is_default = false`, id)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "delete data store failed"})
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

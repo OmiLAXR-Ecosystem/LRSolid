@@ -62,6 +62,9 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 					r.Post("/org", AdminCreateOrg(db))
 					r.Post("/user", AdminCreateUser(cfg, db))
 					r.Post("/user/assign", AdminAssignUserToOrg(cfg, db))
+					r.Post("/data-store", AdminCreateDataStore(cfg, db))
+					r.Patch("/data-store/{id}", AdminUpdateDataStore(cfg, db))
+					r.Delete("/data-store/{id}", AdminDeleteDataStore(cfg, db))
 				})
 
 				// Org-scoped endpoints

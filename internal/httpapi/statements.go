@@ -24,8 +24,9 @@ type postStatementsRequest struct {
 
 func PostStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tenant := store.TenantID(tenantFromRequest(r.Context(), cfg))
-		clientID := clientIDFromRequest(r.Context())
+		ctx := lrs.WithDataStoreID(r.Context(), dataStoreIDFromRequest(r.Context()))
+		tenant := store.TenantID(tenantFromRequest(ctx, cfg))
+		clientID := clientIDFromRequest(ctx)
 
 		rawList, err := parseStatementsPayload(r)
 		if err != nil {
@@ -37,7 +38,7 @@ func PostStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 			return
 		}
 
-		ids, err := svc.IngestStatements(r.Context(), tenant, clientID, rawList)
+		ids, err := svc.IngestStatements(ctx, tenant, clientID, rawList)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -128,7 +129,8 @@ func parseStatementsPayload(r *http.Request) ([]json.RawMessage, error) {
 
 func GetStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tenant := store.TenantID(tenantFromRequest(r.Context(), cfg))
+		ctx := lrs.WithDataStoreID(r.Context(), dataStoreIDFromRequest(r.Context()))
+		tenant := store.TenantID(tenantFromRequest(ctx, cfg))
 
 		q := r.URL.Query()
 		limit := cfg.MaxPageLimit
@@ -167,7 +169,7 @@ func GetStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 			Cursor:      cursor,
 		}
 
-		page, err := svc.QueryStatements(r.Context(), filter)
+		page, err := svc.QueryStatements(ctx, filter)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

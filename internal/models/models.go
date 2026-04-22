@@ -59,6 +59,19 @@ type LRSMembership struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+type DataStore struct {
+	ID               string     `json:"id"`
+	Name             string     `json:"name"`
+	DatabaseType     string     `json:"databaseType"` // "postgres" | "mongodb"
+	OrgID            *string    `json:"orgId,omitempty"`
+	IsDefault        bool       `json:"isDefault"`
+	IsActive         bool       `json:"isActive"`
+	HasConnString    bool       `json:"hasConnectionString"`
+	Description      *string    `json:"description,omitempty"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
+}
+
 type Client struct {
 	ID         string     `json:"id"` // uuid
 	ProjectID  string     `json:"projectId"`
