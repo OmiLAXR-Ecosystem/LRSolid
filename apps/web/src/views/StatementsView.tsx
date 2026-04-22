@@ -143,7 +143,8 @@ export function StatementsView() {
     };
 
     const handleExport = async (id: string) => {
-        const detail = stmts.detail?.id === id ? stmts.detail : await fetchStatementById(id);
+        if (!currentOrg) return;
+        const detail = stmts.detail?.id === id ? stmts.detail : await fetchStatementById(currentOrg, id);
         if (detail) downloadStatementJson(detail);
     };
 

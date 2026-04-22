@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
 	"github.com/SGoerzen/LRSolid/internal/store"
@@ -34,11 +37,53 @@ type connectionStatement struct {
 	StoredAt  time.Time  `json:"storedAt"`
 }
 
-func ConnectionStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
+func ConnectionStatements(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tenant := store.TenantID("")
 		q := r.URL.Query()
+		orgSlug := q.Get("org")
+		if orgSlug == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "missing org"})
+			return
+		}
+
+		claims, ok := auth.ClaimsFromContext(r.Context())
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		if err := validateOrgAccess(r.Context(), db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
+
+		orgID, err := getOrgID(r.Context(), db, orgSlug)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query org failed"})
+			return
+		}
+		if orgID == "" {
+			writeJSON(w, http.StatusNotFound, errorResponse{Error: "organisation not found"})
+			return
+		}
+
+		tenant := store.TenantID("")
 		if lrsID := q.Get("lrs"); lrsID != "" {
+			var allowed bool
+			if err := db.QueryRow(r.Context(), `
+				SELECT EXISTS(
+					SELECT 1
+					FROM lrs l
+					JOIN projects p ON p.id = l.project_id
+					WHERE l.id = $1::uuid AND p.org_id = $2::uuid
+				)
+			`, lrsID, orgID).Scan(&allowed); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "check lrs failed"})
+				return
+			}
+			if !allowed {
+				writeJSON(w, http.StatusForbidden, errorResponse{Error: "lrs does not belong to organisation"})
+				return
+			}
 			tenant = store.TenantID(lrsID)
 		}
 
@@ -66,6 +111,7 @@ func ConnectionStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc 
 
 		filter := store.StatementFilter{
 			TenantID:    tenant,
+			OrgID:       &orgID,
 			ActorMBox:   optString(q.Get("actor_mbox")),
 			VerbID:      optString(q.Get("verb")),
 			ObjectID:    optString(q.Get("activity")),

@@ -82,36 +82,43 @@ func (s *StatementStore) GetStatements(ctx context.Context, f store.StatementFil
 
 	args := make([]any, 0, 8)
 	where := "1=1"
+	joins := ""
 	argn := 1
+	if f.OrgID != nil && *f.OrgID != "" {
+		joins += " JOIN lrs l ON l.id = statements.tenant_id JOIN projects p ON p.id = l.project_id"
+		where += fmt.Sprintf(" AND p.org_id=$%d::uuid", argn)
+		args = append(args, *f.OrgID)
+		argn++
+	}
 	if f.TenantID != "" {
-		where += " AND tenant_id=$1"
+		where += fmt.Sprintf(" AND statements.tenant_id=$%d", argn)
 		args = append(args, f.TenantID)
-		argn = 2
+		argn++
 	}
 
 	// Optional filters
 	if f.ActorMBox != nil {
-		where += fmt.Sprintf(" AND actor_mbox=$%d", argn)
+		where += fmt.Sprintf(" AND statements.actor_mbox=$%d", argn)
 		args = append(args, *f.ActorMBox)
 		argn++
 	}
 	if f.VerbID != nil {
-		where += fmt.Sprintf(" AND verb_id=$%d", argn)
+		where += fmt.Sprintf(" AND statements.verb_id=$%d", argn)
 		args = append(args, *f.VerbID)
 		argn++
 	}
 	if f.ObjectID != nil {
-		where += fmt.Sprintf(" AND object_id=$%d", argn)
+		where += fmt.Sprintf(" AND statements.object_id=$%d", argn)
 		args = append(args, *f.ObjectID)
 		argn++
 	}
 	if f.StoredSince != nil {
-		where += fmt.Sprintf(" AND stored_at >= $%d", argn)
+		where += fmt.Sprintf(" AND statements.stored_at >= $%d", argn)
 		args = append(args, *f.StoredSince)
 		argn++
 	}
 	if f.StoredUntil != nil {
-		where += fmt.Sprintf(" AND stored_at <= $%d", argn)
+		where += fmt.Sprintf(" AND statements.stored_at <= $%d", argn)
 		args = append(args, *f.StoredUntil)
 		argn++
 	}
@@ -124,9 +131,9 @@ func (s *StatementStore) GetStatements(ctx context.Context, f store.StatementFil
 		}
 		// stable paging: compare tuple (stored_at, id)
 		if f.Ascending {
-			where += fmt.Sprintf(" AND (stored_at, id) > ($%d, $%d)", argn, argn+1)
+			where += fmt.Sprintf(" AND (statements.stored_at, statements.id) > ($%d, $%d)", argn, argn+1)
 		} else {
-			where += fmt.Sprintf(" AND (stored_at, id) < ($%d, $%d)", argn, argn+1)
+			where += fmt.Sprintf(" AND (statements.stored_at, statements.id) < ($%d, $%d)", argn, argn+1)
 		}
 		args = append(args, c.StoredAt, c.ID)
 		argn += 2
@@ -142,12 +149,21 @@ func (s *StatementStore) GetStatements(ctx context.Context, f store.StatementFil
 	args = append(args, limit)
 
 	q := fmt.Sprintf(`
-		SELECT tenant_id, id, stored_at, actor_mbox, verb_id, object_id, client_id, statement
+		SELECT
+			statements.tenant_id,
+			statements.id,
+			statements.stored_at,
+			statements.actor_mbox,
+			statements.verb_id,
+			statements.object_id,
+			statements.client_id,
+			statements.statement
 		FROM statements
+		%s
 		WHERE %s
-		ORDER BY stored_at %s, id %s
+		ORDER BY statements.stored_at %s, statements.id %s
 		LIMIT $%d
-	`, where, order, order, argn)
+	`, joins, where, order, order, argn)
 
 	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {

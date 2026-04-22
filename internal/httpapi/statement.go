@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
 	"github.com/SGoerzen/LRSolid/internal/store"
@@ -44,14 +46,69 @@ type statementDetailResponse struct {
 
 func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		orgSlug := r.URL.Query().Get("org")
+		if orgSlug == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "missing org"})
+			return
+		}
+
+		claims, ok := auth.ClaimsFromContext(r.Context())
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		if err := validateOrgAccess(r.Context(), db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
+
 		tenant := store.TenantID("")
 		if lrsID := r.URL.Query().Get("lrs"); lrsID != "" {
+			var allowed bool
+			if err := db.QueryRow(r.Context(), `
+				SELECT EXISTS(
+					SELECT 1
+					FROM lrs l
+					JOIN projects p ON p.id = l.project_id
+					JOIN organisations o ON o.id = p.org_id
+					WHERE l.id = $1::uuid AND o.slug = $2
+				)
+			`, lrsID, orgSlug).Scan(&allowed); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "check lrs failed"})
+				return
+			}
+			if !allowed {
+				writeJSON(w, http.StatusForbidden, errorResponse{Error: "lrs does not belong to organisation"})
+				return
+			}
 			tenant = store.TenantID(lrsID)
 		}
 		id := chi.URLParam(r, "id")
 		if id == "" {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "missing id"})
 			return
+		}
+		if tenant == "" {
+			var tenantID string
+			err := db.QueryRow(r.Context(), `
+				SELECT st.tenant_id
+				FROM statements st
+				JOIN lrs l ON l.id = st.tenant_id
+				JOIN projects p ON p.id = l.project_id
+				JOIN organisations o ON o.id = p.org_id
+				WHERE st.id = $1 AND o.slug = $2
+				ORDER BY st.stored_at DESC
+				LIMIT 1
+			`, id, orgSlug).Scan(&tenantID)
+			if err == pgx.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
+				return
+			}
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup failed"})
+				return
+			}
+			tenant = store.TenantID(tenantID)
 		}
 
 		st, err := svc.GetStatementByID(r.Context(), tenant, store.StatementID(id))
@@ -85,8 +142,8 @@ func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Han
 			JOIN organisations o ON o.id = p.org_id
 			JOIN data_stores ds ON ds.id = l.data_store_id
 			LEFT JOIN clients c ON c.id = st.client_id
-			WHERE st.tenant_id = $1 AND st.id = $2
-		`, st.TenantID, st.ID).Scan(
+			WHERE st.tenant_id = $1 AND st.id = $2 AND o.slug = $3
+		`, st.TenantID, st.ID, orgSlug).Scan(
 			&md.TenantID,
 			&md.LRSID, &md.LRSName,
 			&md.ProjectID, &md.ProjectSlug, &md.ProjectName,
@@ -94,6 +151,10 @@ func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Han
 			&md.DataStoreID, &md.DataStoreName, &md.DataStoreType,
 			&md.ClientID, &md.ClientName,
 		); err != nil {
+			if err == pgx.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "metadata lookup failed"})
 			return
 		}

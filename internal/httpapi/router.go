@@ -51,7 +51,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 		// Connection + REST API
 		r.Route("/api", func(r chi.Router) {
 			r.Route("/connection", func(r chi.Router) {
-				r.Get("/statement", ConnectionStatements(cfg, svc))
+				r.Get("/statement", ConnectionStatements(cfg, svc, db))
 			})
 			r.Get("/statement/{id}", StatementByID(cfg, svc, db))
 
