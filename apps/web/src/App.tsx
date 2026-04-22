@@ -24,6 +24,9 @@ type RouteConfig = {
     content: React.ReactNode;
 };
 
+type ThemePreference = "light" | "dark" | "system";
+const THEME_STORAGE_KEY = "lrsolid-theme";
+
 const ROUTES: Record<string, RouteConfig> = {
     dashboard: { activeKey: "dashboard", searchPlaceholder: "Search...", content: <LRSolidDashboard /> },
     statements: { activeKey: "statements", searchPlaceholder: "Search statements...", content: <StatementsView /> },
@@ -51,6 +54,31 @@ function parsePath(pathname: string): { org: string; route: string } {
 function AppShell() {
     const { state } = useAuth();
     const [pathname, setPathname] = useState(() => window.location.pathname);
+    const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
+        const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+        return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+    });
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+        const root = document.documentElement;
+        const applyTheme = () => {
+            const shouldUseDark = themePreference === "dark" || (themePreference === "system" && mediaQuery.matches);
+            root.classList.toggle("dark", shouldUseDark);
+        };
+
+        applyTheme();
+        window.localStorage.setItem(THEME_STORAGE_KEY, themePreference);
+
+        const onChange = () => {
+            if (themePreference === "system") {
+                applyTheme();
+            }
+        };
+
+        mediaQuery.addEventListener("change", onChange);
+        return () => mediaQuery.removeEventListener("change", onChange);
+    }, [themePreference]);
 
     useEffect(() => {
         // Migrate old hash URLs like `#/default/statements` to `/default/statements`.
@@ -76,7 +104,11 @@ function AppShell() {
 
     if (pathname === "/profile") {
         return (
-            <AdminShell activeKey="profile">
+            <AdminShell
+                activeKey="profile"
+                themePreference={themePreference}
+                onThemePreferenceChange={setThemePreference}
+            >
                 <ProfileView />
             </AdminShell>
         );
@@ -86,7 +118,12 @@ function AppShell() {
     const { activeKey, searchPlaceholder, content } = ROUTES[route] ?? ROUTES.dashboard;
 
     return (
-        <AdminShell activeKey={activeKey} searchPlaceholder={searchPlaceholder}>
+        <AdminShell
+            activeKey={activeKey}
+            searchPlaceholder={searchPlaceholder}
+            themePreference={themePreference}
+            onThemePreferenceChange={setThemePreference}
+        >
             {content}
         </AdminShell>
     );

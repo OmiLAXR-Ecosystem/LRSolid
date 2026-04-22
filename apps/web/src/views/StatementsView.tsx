@@ -116,6 +116,7 @@ export function StatementsView() {
                 extensions: filters.extensions.length > 0 ? filters.extensions : undefined,
                 format: "ndjson",
                 compression: "gzip",
+                statementWrapper: filters.statementWrapper,
                 targetType: (filters.targetType as "s3" | "gdrive" | "onedrive" | "icloud") || undefined,
                 targetPath: filters.targetPath || undefined,
             });

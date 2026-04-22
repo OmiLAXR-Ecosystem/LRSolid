@@ -53,7 +53,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 			r.Route("/connection", func(r chi.Router) {
 				r.Get("/statement", ConnectionStatements(cfg, svc))
 			})
-			r.Get("/statement/{id}", StatementByID(cfg, svc))
+			r.Get("/statement/{id}", StatementByID(cfg, svc, db))
 
 			r.Route("/v1", func(r chi.Router) {
 				// Organisation list (no org param required)

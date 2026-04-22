@@ -51,31 +51,35 @@ type extensionConditionReq struct {
 }
 
 type createExportJobRequest struct {
-	ProjectID   *string                 `json:"projectId,omitempty"`
-	LRSID       *string                 `json:"lrsId,omitempty"`
-	ClientID    *string                 `json:"clientId,omitempty"`
-	ActorMbox   *fieldConditionReq      `json:"actorMbox,omitempty"`
-	VerbID      *fieldConditionReq      `json:"verbId,omitempty"`
-	ObjectID    *fieldConditionReq      `json:"objectId,omitempty"`
-	StoredAt    *fieldConditionReq      `json:"storedAt,omitempty"`
-	Extensions  []extensionConditionReq `json:"extensions,omitempty"`
-	Format      string                  `json:"format,omitempty"`
-	Compression string                  `json:"compression,omitempty"`
-	TargetType  *string                 `json:"targetType,omitempty"`
-	TargetPath  *string                 `json:"targetPath,omitempty"`
+	ProjectID *string `json:"projectId,omitempty"`
+	LRSID     *string `json:"lrsId,omitempty"`
+	ClientID  *string `json:"clientId,omitempty"`
+	// StatementWrapper controls whether each exported line is wrapped as:
+	// {"metadata": {...}, "statement": {...raw xAPI...}}
+	StatementWrapper bool                    `json:"statementWrapper,omitempty"`
+	ActorMbox        *fieldConditionReq      `json:"actorMbox,omitempty"`
+	VerbID           *fieldConditionReq      `json:"verbId,omitempty"`
+	ObjectID         *fieldConditionReq      `json:"objectId,omitempty"`
+	StoredAt         *fieldConditionReq      `json:"storedAt,omitempty"`
+	Extensions       []extensionConditionReq `json:"extensions,omitempty"`
+	Format           string                  `json:"format,omitempty"`
+	Compression      string                  `json:"compression,omitempty"`
+	TargetType       *string                 `json:"targetType,omitempty"`
+	TargetPath       *string                 `json:"targetPath,omitempty"`
 }
 
 // statementWhereFilter holds all filter parameters for building a WHERE clause.
 type statementWhereFilter struct {
-	OrgID      string
-	ProjectID  *string
-	LRSID      *string
-	ClientID   *string
-	ActorMbox  *fieldConditionReq
-	VerbID     *fieldConditionReq
-	ObjectID   *fieldConditionReq
-	StoredAt   *fieldConditionReq
-	Extensions []extensionConditionReq
+	OrgID            string
+	ProjectID        *string
+	LRSID            *string
+	ClientID         *string
+	StatementWrapper bool
+	ActorMbox        *fieldConditionReq
+	VerbID           *fieldConditionReq
+	ObjectID         *fieldConditionReq
+	StoredAt         *fieldConditionReq
+	Extensions       []extensionConditionReq
 }
 
 // buildStatementWhere constructs the WHERE clause and args for statement queries.
@@ -228,6 +232,30 @@ type exportJobResponse struct {
 
 type exportJobListResponse struct {
 	Items []exportJobResponse `json:"items"`
+}
+
+type exportStatementMetadata struct {
+	StatementID      string  `json:"statementId"`
+	StoredAt         string  `json:"storedAt"`
+	TenantID         string  `json:"tenantId"`
+	LRSID            string  `json:"lrsId"`
+	LRSName          string  `json:"lrsName"`
+	ProjectID        string  `json:"projectId"`
+	ProjectSlug      string  `json:"projectSlug"`
+	ProjectName      string  `json:"projectName"`
+	OrganizationID   string  `json:"organizationId"`
+	OrganizationSlug string  `json:"organizationSlug"`
+	OrganizationName string  `json:"organizationName"`
+	DataStoreID      string  `json:"dataStoreId"`
+	DataStoreName    string  `json:"dataStoreName"`
+	DataStoreType    string  `json:"dataStoreType"`
+	ClientID         *string `json:"clientId,omitempty"`
+	ClientName       *string `json:"clientName,omitempty"`
+}
+
+type exportWrappedStatement struct {
+	Metadata  exportStatementMetadata `json:"metadata"`
+	Statement json.RawMessage         `json:"statement"`
 }
 
 func ensureExportSettings(ctx context.Context, cfg config.Config, db *pgxpool.Pool, orgID string) error {
@@ -444,15 +472,16 @@ func RestCreateStatementExport(cfg config.Config, db *pgxpool.Pool) http.Handler
 		}
 
 		wf := statementWhereFilter{
-			OrgID:      orgID,
-			ProjectID:  projectID,
-			LRSID:      lrsID,
-			ClientID:   clientID,
-			ActorMbox:  req.ActorMbox,
-			VerbID:     req.VerbID,
-			ObjectID:   req.ObjectID,
-			StoredAt:   req.StoredAt,
-			Extensions: req.Extensions,
+			OrgID:            orgID,
+			ProjectID:        projectID,
+			LRSID:            lrsID,
+			ClientID:         clientID,
+			StatementWrapper: req.StatementWrapper,
+			ActorMbox:        req.ActorMbox,
+			VerbID:           req.VerbID,
+			ObjectID:         req.ObjectID,
+			StoredAt:         req.StoredAt,
+			Extensions:       req.Extensions,
 		}
 		estimateRows, estimateBytes, err := estimateStatementExport(ctx, db, wf)
 		if err != nil {
@@ -506,14 +535,15 @@ func RestCreateStatementExport(cfg config.Config, db *pgxpool.Pool) http.Handler
 		}
 
 		filtersPayload := map[string]any{
-			"projectId":  projectID,
-			"lrsId":      lrsID,
-			"clientId":   clientID,
-			"actorMbox":  req.ActorMbox,
-			"verbId":     req.VerbID,
-			"objectId":   req.ObjectID,
-			"storedAt":   req.StoredAt,
-			"extensions": req.Extensions,
+			"projectId":        projectID,
+			"lrsId":            lrsID,
+			"clientId":         clientID,
+			"statementWrapper": req.StatementWrapper,
+			"actorMbox":        req.ActorMbox,
+			"verbId":           req.VerbID,
+			"objectId":         req.ObjectID,
+			"storedAt":         req.StoredAt,
+			"extensions":       req.Extensions,
 		}
 		targetConfig := map[string]any{
 			"path": targetPath,
@@ -836,7 +866,7 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 
 		gz := gzip.NewWriter(w)
 
-		streamErr := streamStatementsToWriter(ctx, db, where, args, argn, gz)
+		streamErr := streamStatementsToWriter(ctx, db, where, args, argn, wf.StatementWrapper, gz)
 		if err := gz.Close(); err != nil && streamErr == "" {
 			streamErr = "compress failed: " + err.Error()
 		}
@@ -853,26 +883,28 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 // back into a statementWhereFilter so the download can replay the same query.
 func filtersToWhereFilter(orgID string, raw []byte) statementWhereFilter {
 	var m struct {
-		ProjectID  *string                 `json:"projectId"`
-		LRSID      *string                 `json:"lrsId"`
-		ClientID   *string                 `json:"clientId"`
-		ActorMbox  *fieldConditionReq      `json:"actorMbox"`
-		VerbID     *fieldConditionReq      `json:"verbId"`
-		ObjectID   *fieldConditionReq      `json:"objectId"`
-		StoredAt   *fieldConditionReq      `json:"storedAt"`
-		Extensions []extensionConditionReq `json:"extensions"`
+		ProjectID        *string                 `json:"projectId"`
+		LRSID            *string                 `json:"lrsId"`
+		ClientID         *string                 `json:"clientId"`
+		StatementWrapper bool                    `json:"statementWrapper"`
+		ActorMbox        *fieldConditionReq      `json:"actorMbox"`
+		VerbID           *fieldConditionReq      `json:"verbId"`
+		ObjectID         *fieldConditionReq      `json:"objectId"`
+		StoredAt         *fieldConditionReq      `json:"storedAt"`
+		Extensions       []extensionConditionReq `json:"extensions"`
 	}
 	_ = json.Unmarshal(raw, &m)
 	return statementWhereFilter{
-		OrgID:      orgID,
-		ProjectID:  normalizeOptionalString(m.ProjectID),
-		LRSID:      normalizeOptionalString(m.LRSID),
-		ClientID:   normalizeOptionalString(m.ClientID),
-		ActorMbox:  m.ActorMbox,
-		VerbID:     m.VerbID,
-		ObjectID:   m.ObjectID,
-		StoredAt:   m.StoredAt,
-		Extensions: m.Extensions,
+		OrgID:            orgID,
+		ProjectID:        normalizeOptionalString(m.ProjectID),
+		LRSID:            normalizeOptionalString(m.LRSID),
+		ClientID:         normalizeOptionalString(m.ClientID),
+		StatementWrapper: m.StatementWrapper,
+		ActorMbox:        m.ActorMbox,
+		VerbID:           m.VerbID,
+		ObjectID:         m.ObjectID,
+		StoredAt:         m.StoredAt,
+		Extensions:       m.Extensions,
 	}
 }
 
@@ -935,7 +967,7 @@ func buildRemoteObjectURL(baseURL, targetPath string) string {
 	return base + "/" + path
 }
 
-func streamStatementsToWriter(ctx context.Context, db *pgxpool.Pool, where string, args []any, argn int, w io.Writer) string {
+func streamStatementsToWriter(ctx context.Context, db *pgxpool.Pool, where string, args []any, argn int, wrapStatement bool, w io.Writer) string {
 	// Stream in batches using keyset cursor on (stored_at, tenant_id, id)
 	var cursorStoredAt time.Time
 	var cursorTenantID, cursorID string
@@ -947,10 +979,19 @@ func streamStatementsToWriter(ctx context.Context, db *pgxpool.Pool, where strin
 		cursorArgN := argn
 
 		q := `
-			SELECT st.stored_at, st.tenant_id, st.id, st.statement::text
+			SELECT st.stored_at, st.tenant_id, st.id,
+			       st.statement::text,
+			       l.id::text, l.name,
+			       p.id::text, p.slug, p.name,
+			       o.id::text, o.slug, o.name,
+			       ds.id::text, ds.name, ds.database_type,
+			       c.id::text, c.name
 			FROM statements st
 			JOIN lrs l ON l.id = st.tenant_id
 			JOIN projects p ON p.id = l.project_id
+			JOIN organisations o ON o.id = p.org_id
+			JOIN data_stores ds ON ds.id = l.data_store_id
+			LEFT JOIN clients c ON c.id = st.client_id
 			WHERE ` + where + `
 			  AND (st.stored_at, st.tenant_id::text, st.id) > ($` + strconv.Itoa(cursorArgN) + `, $` + strconv.Itoa(cursorArgN+1) + `, $` + strconv.Itoa(cursorArgN+2) + `)
 			ORDER BY st.stored_at ASC, st.tenant_id ASC, st.id ASC
@@ -959,10 +1000,19 @@ func streamStatementsToWriter(ctx context.Context, db *pgxpool.Pool, where strin
 		if first {
 			batchArgs = append(args, batchSize)
 			q = `
-				SELECT st.stored_at, st.tenant_id, st.id, st.statement::text
+				SELECT st.stored_at, st.tenant_id, st.id,
+				       st.statement::text,
+				       l.id::text, l.name,
+				       p.id::text, p.slug, p.name,
+				       o.id::text, o.slug, o.name,
+				       ds.id::text, ds.name, ds.database_type,
+				       c.id::text, c.name
 				FROM statements st
 				JOIN lrs l ON l.id = st.tenant_id
 				JOIN projects p ON p.id = l.project_id
+				JOIN organisations o ON o.id = p.org_id
+				JOIN data_stores ds ON ds.id = l.data_store_id
+				LEFT JOIN clients c ON c.id = st.client_id
 				WHERE ` + where + `
 				ORDER BY st.stored_at ASC, st.tenant_id ASC, st.id ASC
 				LIMIT $` + strconv.Itoa(argn)
@@ -977,11 +1027,54 @@ func streamStatementsToWriter(ctx context.Context, db *pgxpool.Pool, where strin
 		count := 0
 		for rows.Next() {
 			var rawStmt string
-			if err := rows.Scan(&cursorStoredAt, &cursorTenantID, &cursorID, &rawStmt); err != nil {
+			var lrsID, lrsName string
+			var projectID, projectSlug, projectName string
+			var organizationID, organizationSlug, organizationName string
+			var dataStoreID, dataStoreName, dataStoreType string
+			var clientID, clientName *string
+			if err := rows.Scan(
+				&cursorStoredAt, &cursorTenantID, &cursorID,
+				&rawStmt,
+				&lrsID, &lrsName,
+				&projectID, &projectSlug, &projectName,
+				&organizationID, &organizationSlug, &organizationName,
+				&dataStoreID, &dataStoreName, &dataStoreType,
+				&clientID, &clientName,
+			); err != nil {
 				rows.Close()
 				return "scan failed: " + err.Error()
 			}
-			if _, err := io.WriteString(w, rawStmt+"\n"); err != nil {
+			line := rawStmt
+			if wrapStatement {
+				payload := exportWrappedStatement{
+					Metadata: exportStatementMetadata{
+						StatementID:      cursorID,
+						StoredAt:         cursorStoredAt.UTC().Format(time.RFC3339Nano),
+						TenantID:         cursorTenantID,
+						LRSID:            lrsID,
+						LRSName:          lrsName,
+						ProjectID:        projectID,
+						ProjectSlug:      projectSlug,
+						ProjectName:      projectName,
+						OrganizationID:   organizationID,
+						OrganizationSlug: organizationSlug,
+						OrganizationName: organizationName,
+						DataStoreID:      dataStoreID,
+						DataStoreName:    dataStoreName,
+						DataStoreType:    dataStoreType,
+						ClientID:         clientID,
+						ClientName:       clientName,
+					},
+					Statement: json.RawMessage(rawStmt),
+				}
+				b, err := json.Marshal(payload)
+				if err != nil {
+					rows.Close()
+					return "marshal wrapper failed: " + err.Error()
+				}
+				line = string(b)
+			}
+			if _, err := io.WriteString(w, line+"\n"); err != nil {
 				rows.Close()
 				return "write failed: " + err.Error()
 			}
@@ -1017,7 +1110,7 @@ func uploadExportToS3(
 	streamDone := make(chan string, 1)
 	go func() {
 		gz := gzip.NewWriter(pw)
-		streamErr := streamStatementsToWriter(ctx, db, where, args, argn, gz)
+		streamErr := streamStatementsToWriter(ctx, db, where, args, argn, wf.StatementWrapper, gz)
 		if err := gz.Close(); err != nil && streamErr == "" {
 			streamErr = "compress failed: " + err.Error()
 		}

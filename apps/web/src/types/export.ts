@@ -45,6 +45,8 @@ export type ExportFilterState = {
   // Target
   targetType: string;
   targetPath: string;
+  // Output
+  statementWrapper: boolean;
 };
 
 export function emptyExportFilter(): ExportFilterState {
@@ -59,6 +61,7 @@ export function emptyExportFilter(): ExportFilterState {
     extensions: [],
     targetType: "",
     targetPath: "",
+    statementWrapper: false,
   };
 }
 
@@ -75,6 +78,7 @@ export type CreateStatementExportPayload = {
   extensions?: ExtensionCondition[];
   format?: "ndjson";
   compression?: "gzip" | "none";
+  statementWrapper?: boolean;
   targetType?: "s3" | "gdrive" | "onedrive" | "icloud";
   targetPath?: string;
 };

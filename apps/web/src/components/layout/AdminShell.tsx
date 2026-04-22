@@ -3,6 +3,7 @@ import {
     LayoutDashboard, FileText, Users, BarChart2,
     Database, Store, KeyRound, Search, Bell,
     Calendar, ChevronDown, LogOut, FolderOpen, ShieldCheck,
+    MonitorCog, Moon, Sun,
 } from "lucide-react";
 import Logo from "../../assets/LRSolid_Logo.png";
 import { useAuth } from "../../contexts/AuthContext";
@@ -25,6 +26,8 @@ export type NavKey =
 type AdminShellProps = {
     activeKey: NavKey;
     searchPlaceholder?: string;
+    themePreference: "light" | "dark" | "system";
+    onThemePreferenceChange: (theme: "light" | "dark" | "system") => void;
     children: ReactNode;
 };
 
@@ -69,7 +72,13 @@ function SidebarItem({ item, active }: { item: NavItem; active: boolean }) {
     );
 }
 
-export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShellProps) {
+export function AdminShell({
+    activeKey,
+    searchPlaceholder,
+    themePreference,
+    onThemePreferenceChange,
+    children,
+}: AdminShellProps) {
     const { state, logout } = useAuth();
     const { orgs, currentOrg, setOrg } = useOrg();
     const user = state.status === "authenticated" ? state.user : null;
@@ -77,6 +86,9 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
     const canSeeAllOrgs = user?.role === "admin" || user?.role === "owner";
     const navItems = buildNavItems(currentOrg);
     const marketplaceHref = `/${currentOrg}/marketplace`;
+    const nextTheme = themePreference === "system" ? "light" : themePreference === "light" ? "dark" : "system";
+    const themeIcon = themePreference === "system" ? <MonitorCog className="h-5 w-5 text-slate-600" /> : themePreference === "dark" ? <Moon className="h-5 w-5 text-slate-600" /> : <Sun className="h-5 w-5 text-slate-600" />;
+    const themeTitle = `Theme: ${themePreference} (click to switch to ${nextTheme})`;
 
     return (
         <div className="h-screen max-h-screen overflow-hidden bg-slate-100 text-slate-900">
@@ -144,6 +156,15 @@ export function AdminShell({ activeKey, searchPlaceholder, children }: AdminShel
                                 </button>
                                 <button className="h-10 w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 grid place-items-center">
                                     <Calendar className="h-5 w-5 text-slate-600" />
+                                </button>
+                                <button
+                                    type="button"
+                                    title={themeTitle}
+                                    aria-label={themeTitle}
+                                    onClick={() => onThemePreferenceChange(nextTheme)}
+                                    className="h-10 min-w-10 rounded-xl ring-1 ring-slate-200 bg-white hover:bg-slate-50 px-2 grid place-items-center"
+                                >
+                                    {themeIcon}
                                 </button>
                                 {canSeeAllOrgs && (
                                     <a

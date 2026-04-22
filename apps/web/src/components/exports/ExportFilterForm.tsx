@@ -341,6 +341,20 @@ export function ExportFilterForm({ value, onChange, projects, lrsItems, clients,
                     )}
                 </div>
             </div>
+
+            {/* Output format details */}
+            <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Output</div>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                        type="checkbox"
+                        checked={value.statementWrapper}
+                        onChange={(e) => set("statementWrapper", e.target.checked)}
+                        className="accent-teal-600"
+                    />
+                    Include metadata wrapper (`metadata` + `statement`)
+                </label>
+            </div>
         </div>
     );
 }
