@@ -138,7 +138,7 @@ make dev web   # Vite dev server on :5173
 With the development stack running, create a user in another terminal:
 
 ```bash
-make dev create user EMAIL=you@example.com PASSWORD=secret ROLE=owner
+make user create EMAIL=you@example.com PASSWORD=secret ROLE=owner
 ```
 
 Available roles: `owner`, `admin`, `member`, `viewer`
@@ -244,7 +244,7 @@ make lint                  Lint Go + Web
 make fmt                   Format Go + Web
 make migrate up            Apply DB migrations
 make migrate down          Roll back DB migrations
-make create user           Create a user (EMAIL= PASSWORD= [ROLE=owner] [ORG=default])
+make user create           Create a user (EMAIL= PASSWORD= [ROLE=owner] [ORG=default])
 make pg up                 Start local Postgres via Docker
 make pg down               Stop local Postgres container
 make xapi smoke            POST + GET a test xAPI statement

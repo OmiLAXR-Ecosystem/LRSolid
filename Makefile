@@ -41,14 +41,11 @@ PG_DSN ?= $(DEV_PG_DSN)
 # HELP: build api | Build API binary (apps/api/bin/api)
 # HELP: build web | Build Web bundle (Vite build)
 # HELP: clean | Clean build artifacts
-# HELP: create user | Create a user (EMAIL=... PASSWORD=... [ORG=default] [ROLE=owner])
+# HELP: user create | Create/update a user (EMAIL=... PASSWORD=... [ORG=default] [ROLE=owner])
 # HELP: deps | Install dependencies (Go + Web)
 # HELP: dev | Start the complete dev stack (Postgres, API, and Web)
 # HELP: dev api | Run API locally with hot reload via air (requires PG_DSN)
 # HELP: dev build | Rebuild dev images (e.g. after Dockerfile.dev changes)
-# HELP: dev create user | Create user in dev DB: EMAIL=you@x.com PASSWORD=secret [ROLE=owner]
-# HELP: dev down | Stop dev stack
-# HELP: dev down volumes | Stop dev stack and remove volumes
 # HELP: dev logs | Tail all dev service logs
 # HELP: dev logs api | Tail API dev logs
 # HELP: dev logs web | Tail Web dev logs (Vite)
@@ -59,8 +56,8 @@ PG_DSN ?= $(DEV_PG_DSN)
 # HELP: dev web | Run Web locally (pnpm dev)
 # HELP: docker build | Build all docker images (production)
 # HELP: docker push | Push images to registry (set REGISTRY=... first)
-# HELP: down | Stop and remove containers (production)
-# HELP: down volumes | Stop containers and remove volumes (production)
+# HELP: down | Stop and remove development and production containers
+# HELP: down volumes | Stop both stacks and remove their volumes
 # HELP: fmt | Format Go + Web
 # HELP: help | Show available commands
 # HELP: lint | Lint Go + Web (if configured)
@@ -110,14 +107,10 @@ __dispatch:
 		"build api") $(MAKE) --no-print-directory __build_api ;; \
 		"build web") $(MAKE) --no-print-directory __build_web ;; \
 		"clean") $(MAKE) --no-print-directory __clean ;; \
-		"create user") $(MAKE) --no-print-directory __create_user ;; \
 		"deps") $(MAKE) --no-print-directory __deps ;; \
 		"dev") $(MAKE) --no-print-directory __dev ;; \
 		"dev api") $(MAKE) --no-print-directory __dev_api ;; \
 		"dev build") $(MAKE) --no-print-directory __dev_build ;; \
-		"dev create user") $(MAKE) --no-print-directory __dev_create_user ;; \
-		"dev down") $(MAKE) --no-print-directory __dev_down ;; \
-		"dev down volumes") $(MAKE) --no-print-directory __dev_down_volumes ;; \
 		"dev logs") $(MAKE) --no-print-directory __dev_logs ;; \
 		"dev logs api") $(MAKE) --no-print-directory __dev_logs_api ;; \
 		"dev logs web") $(MAKE) --no-print-directory __dev_logs_web ;; \
@@ -144,6 +137,7 @@ __dispatch:
 		"tidy") $(MAKE) --no-print-directory __tidy ;; \
 		"up") $(MAKE) --no-print-directory __up ;; \
 		"up build") $(MAKE) --no-print-directory __up_build ;; \
+		"user create") $(MAKE) --no-print-directory __user_create ;; \
 		"xapi get") $(MAKE) --no-print-directory __xapi_get ;; \
 		"xapi post") $(MAKE) --no-print-directory __xapi_post ;; \
 		"xapi smoke") $(MAKE) --no-print-directory __xapi_smoke ;; \
@@ -245,10 +239,12 @@ __up_build:
 .PHONY: __down
 __down:
 	@$(COMPOSE) down
+	@$(DEV_COMPOSE) down
 
 .PHONY: __down_volumes
 __down_volumes:
 	@$(COMPOSE) down -v
+	@$(DEV_COMPOSE) down -v
 
 .PHONY: __logs
 __logs:
@@ -279,14 +275,6 @@ __dev_up:
 __dev_up_detached:
 	@$(DEV_COMPOSE) up -d
 
-.PHONY: __dev_down
-__dev_down:
-	@$(DEV_COMPOSE) down
-
-.PHONY: __dev_down_volumes
-__dev_down_volumes:
-	@$(DEV_COMPOSE) down -v
-
 .PHONY: __dev_logs
 __dev_logs:
 	@$(DEV_COMPOSE) logs -f --tail=200
@@ -302,17 +290,6 @@ __dev_logs_web:
 .PHONY: __dev_build
 __dev_build:
 	@$(DEV_COMPOSE) build
-
-.PHONY: __dev_create_user
-__dev_create_user:
-	@test -n "$(EMAIL)" || (echo "Missing EMAIL=..."; exit 1)
-	@test -n "$(PASSWORD)" || (echo "Missing PASSWORD=..."; exit 1)
-	@PG_DSN="postgres://lrsolid:lrsolid@localhost:$(DEV_POSTGRES_PORT)/lrsolid?sslmode=disable" \
-		$(GO) run ./scripts/create_admin_user.go \
-		--email "$(EMAIL)" \
-		--password "$(PASSWORD)" \
-		--org "$(or $(ORG),default)" \
-		--role "$(or $(ROLE),owner)"
 
 .PHONY: __dev_psql
 __dev_psql:
@@ -393,6 +370,6 @@ __admin_create:
 		--org "$(or $(ORG),default)" \
 		--role "$(or $(ROLE),owner)"
 
-.PHONY: __create_user
-__create_user:
+.PHONY: __user_create
+__user_create:
 	@$(MAKE) --no-print-directory __admin_create EMAIL="$(EMAIL)" PASSWORD="$(PASSWORD)" ORG="$(ORG)" ROLE="$(ROLE)"
