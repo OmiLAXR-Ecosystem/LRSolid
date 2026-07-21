@@ -11,9 +11,10 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
 	"github.com/SGoerzen/LRSolid/internal/plugins"
+	"github.com/SGoerzen/LRSolid/internal/secrets"
 )
 
-func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *plugins.Registry) http.Handler {
+func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *plugins.Registry, dataSecrets secrets.Store) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -62,9 +63,9 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 					r.Post("/org", AdminCreateOrg(db))
 					r.Post("/user", AdminCreateUser(cfg, db))
 					r.Post("/user/assign", AdminAssignUserToOrg(cfg, db))
-					r.Post("/data-store", AdminCreateDataStore(cfg, db))
-					r.Patch("/data-store/{id}", AdminUpdateDataStore(cfg, db))
-					r.Delete("/data-store/{id}", AdminDeleteDataStore(cfg, db))
+					r.Post("/data-store", AdminCreateDataStore(cfg, db, dataSecrets))
+					r.Patch("/data-store/{id}", AdminUpdateDataStore(cfg, db, dataSecrets))
+					r.Delete("/data-store/{id}", AdminDeleteDataStore(cfg, db, dataSecrets))
 				})
 
 				// Org-scoped endpoints

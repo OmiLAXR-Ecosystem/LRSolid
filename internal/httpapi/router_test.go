@@ -16,7 +16,7 @@ func TestXAPIStatementsRouteWithoutAuth_MatchesBothSlashVariants(t *testing.T) {
 		JWTSecret:     "dev-secret",
 	}
 
-	router := NewRouter(cfg, nil, nil, &plugins.Registry{})
+	router := NewRouter(cfg, nil, nil, &plugins.Registry{}, nil)
 
 	tests := []struct {
 		name string

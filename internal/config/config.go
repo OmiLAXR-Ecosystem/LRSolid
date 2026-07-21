@@ -11,7 +11,9 @@ type Config struct {
 	Environment string
 
 	// Storage
-	PostgresDSN string
+	PostgresDSN            string
+	DataStoreSecretKey     string
+	DataStoreSecretKeyFile string
 
 	// xAPI basics
 	DefaultTenant string
@@ -54,6 +56,8 @@ func Load() (Config, error) {
 		Port:                    getenv("PORT", "8080"),
 		Environment:             getenv("ENV", "dev"),
 		PostgresDSN:             getenv("PG_DSN", ""),
+		DataStoreSecretKey:      getenv("DATA_STORE_SECRET_KEY", ""),
+		DataStoreSecretKeyFile:  getenv("DATA_STORE_SECRET_KEY_FILE", ""),
 		DefaultTenant:           getenv("DEFAULT_TENANT", "default"),
 		MaxPageLimit:            getenvInt("MAX_PAGE_LIMIT", 100),
 		DefaultOrg:              getenv("DEFAULT_ORG", "default"),
@@ -77,6 +81,13 @@ func Load() (Config, error) {
 
 	if c.PostgresDSN == "" {
 		return Config{}, fmt.Errorf("PG_DSN is required")
+	}
+	if c.DataStoreSecretKey == "" && c.DataStoreSecretKeyFile != "" {
+		b, err := os.ReadFile(c.DataStoreSecretKeyFile)
+		if err != nil {
+			return Config{}, fmt.Errorf("read DATA_STORE_SECRET_KEY_FILE: %w", err)
+		}
+		c.DataStoreSecretKey = strings.TrimSpace(string(b))
 	}
 	if c.MaxPageLimit <= 0 || c.MaxPageLimit > 1000 {
 		c.MaxPageLimit = 100
