@@ -99,7 +99,6 @@ In addition to user roles, **Clients** are machine auth entities (xAPI Basic Aut
 - Go 1.22+
 - Node.js 20+ / pnpm 9+
 - PostgreSQL 15+ (or Docker)
-- [golang-migrate](https://github.com/golang-migrate/migrate) CLI for migrations
 
 ### 1. Clone and install dependencies
 
@@ -125,19 +124,19 @@ openssl rand -hex 32
 ### 3. Start a local PostgreSQL instance (optional)
 
 ```bash
-make pg-up
+make pg up
 ```
 
 ### 4. Run database migrations
 
 ```bash
-make migrate-up
+make migrate up
 ```
 
 ### 5. Create the first user
 
 ```bash
-make create-user EMAIL=you@example.com PASSWORD=secret ROLE=owner
+make owner EMAIL=you@example.com PASSWORD=secret
 ```
 
 Available roles: `owner`, `admin`, `member`, `viewer`
@@ -147,8 +146,7 @@ Available roles: `owner`, `admin`, `member`, `viewer`
 In two separate terminals:
 
 ```bash
-make dev-api   # Go API on :8080
-make dev-web   # Vite dev server on :5173
+make dev       # Development stack with live reload
 ```
 
 ---
@@ -234,8 +232,8 @@ Migrations live in `migrations/` and are managed with `golang-migrate`.
 | `000010` | Clients (xAPI Basic Auth with scopes) |
 
 ```bash
-make migrate-up    # Apply all pending migrations
-make migrate-down  # Roll back one migration
+make migrate up    # Apply all pending migrations
+make migrate down  # Roll back one migration
 ```
 
 ---
@@ -244,18 +242,27 @@ make migrate-down  # Roll back one migration
 
 ```
 make deps          Install Go + pnpm dependencies
-make dev-api       Run Go API locally
-make dev-web       Run Vite dev server
+make dev           Start the development stack with live reload
+make up            Start the production stack
+make down          Stop both development and production stacks
 make build         Build API binary + Web bundle
+make build api     Build only the API
+make build web     Build only the Web UI
 make test          Run all tests
+make test api      Run only API tests
+make test web      Run only Web tests
 make lint          Lint Go + Web
 make fmt           Format Go + Web
-make migrate-up    Apply DB migrations
-make migrate-down  Roll back DB migrations
-make create-user   Create a user (EMAIL= PASSWORD= [ROLE=owner] [ORG=default])
-make pg-up         Start local Postgres via Docker
-make pg-down       Stop local Postgres container
-make xapi-smoke    POST + GET a test xAPI statement
+make migrate up    Apply DB migrations
+make migrate down  Roll back DB migrations
+make admin         Create an admin (EMAIL= PASSWORD= [ORG=default])
+make owner         Create an owner (EMAIL= PASSWORD= [ORG=default])
+make user          Create a normal user/member (EMAIL= PASSWORD= [ORG=default])
+make pg up         Start local Postgres via Docker
+make pg down       Stop local Postgres container
+make xapi post     POST a test xAPI statement
+make xapi get      GET a test xAPI statement
+make xapi smoke    POST + GET a test xAPI statement
 ```
 
 ---
