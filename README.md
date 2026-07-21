@@ -99,57 +99,49 @@ In addition to user roles, **Clients** are machine auth entities (xAPI Basic Aut
 - Go 1.22+
 - Node.js 20+ / pnpm 9+
 - PostgreSQL 15+ (or Docker)
-- [golang-migrate](https://github.com/golang-migrate/migrate) CLI for migrations
 
-### 1. Clone and install dependencies
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/SGoerzen/LRSolid.git
 cd LRSolid
-make deps
 ```
 
-### 2. Configure environment
+### 2. Start the development stack
+
+```bash
+make dev
+```
+
+This starts PostgreSQL on port `5433`, the Go API with live reload at `http://localhost:8081`, and the Vite development server at `http://localhost:5174`. Press Ctrl+C to stop the stack.
+
+If any port is already occupied, override it when starting the stack:
+
+```bash
+DEV_POSTGRES_PORT=55432 DEV_API_PORT=18080 DEV_WEB_PORT=15173 make dev
+```
+
+To run the API and web app directly on the host instead, install the dependencies and start each server in a separate terminal:
 
 ```bash
 cp .env.example .env
-# Edit .env — set PG_DSN, JWT_SECRET
+# Edit .env and set PG_DSN and JWT_SECRET.
+make deps
+make pg up
+make migrate up
+make dev api   # Go API on :8080
+make dev web   # Vite dev server on :5173
 ```
 
-Generate a strong JWT secret:
+### 3. Create the first user
+
+With the development stack running, create a user in another terminal:
 
 ```bash
-openssl rand -hex 32
-```
-
-### 3. Start a local PostgreSQL instance (optional)
-
-```bash
-make pg-up
-```
-
-### 4. Run database migrations
-
-```bash
-make migrate-up
-```
-
-### 5. Create the first user
-
-```bash
-make create-user EMAIL=you@example.com PASSWORD=secret ROLE=owner
+make dev create user EMAIL=you@example.com PASSWORD=secret ROLE=owner
 ```
 
 Available roles: `owner`, `admin`, `member`, `viewer`
-
-### 6. Run the development servers
-
-In two separate terminals:
-
-```bash
-make dev-api   # Go API on :8080
-make dev-web   # Vite dev server on :5173
-```
 
 ---
 
@@ -157,7 +149,7 @@ make dev-web   # Vite dev server on :5173
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `PG_DSN` | Yes | `postgres://...localhost/lrsolid` | PostgreSQL connection string |
+| `PG_DSN` | Yes | `postgres://lrsolid:lrsolid@localhost:5433/lrsolid?sslmode=disable` | PostgreSQL connection string |
 | `JWT_SECRET` | Yes (prod) | dev fallback | HMAC-SHA256 signing secret for session tokens |
 | `DEFAULT_ORG` | No | `default` | Slug of the default organisation |
 
@@ -198,7 +190,7 @@ make dev-web   # Vite dev server on :5173
 1. Create a client (while logged in with session cookie):
 
 ```bash
-curl -sS -X POST http://localhost:8080/api/v1/client \
+curl -sS -X POST http://localhost:8081/api/v1/client \
   -H 'Content-Type: application/json' \
   -H 'Cookie: lrsolid_session=YOUR_SESSION_COOKIE' \
   -d '{"name":"local-cli","scopes":{"statements:read":true,"statements:write":true}}'
@@ -210,7 +202,7 @@ curl -sS -X POST http://localhost:8080/api/v1/client \
 curl -sS -u "YOUR_KEY_ID:YOUR_SECRET" \
   -H 'Content-Type: application/json' \
   -H 'X-Experience-API-Version: 1.0.3' \
-  -X POST http://localhost:8080/xapi/statements \
+  -X POST http://localhost:8081/xapi/statements \
   -d '{"statement":{"actor":{"mbox":"mailto:sergej@example.org"},"verb":{"id":"http://adlnet.gov/expapi/verbs/experienced","display":{"en-US":"experienced"}},"object":{"id":"https://example.org/activity/intro"}}}'
 ```
 
@@ -234,8 +226,8 @@ Migrations live in `migrations/` and are managed with `golang-migrate`.
 | `000010` | Clients (xAPI Basic Auth with scopes) |
 
 ```bash
-make migrate-up    # Apply all pending migrations
-make migrate-down  # Roll back one migration
+make migrate up    # Apply all pending migrations
+make migrate down  # Roll back one migration
 ```
 
 ---
@@ -243,19 +235,19 @@ make migrate-down  # Roll back one migration
 ## Makefile Targets
 
 ```
-make deps          Install Go + pnpm dependencies
-make dev-api       Run Go API locally
-make dev-web       Run Vite dev server
-make build         Build API binary + Web bundle
-make test          Run all tests
-make lint          Lint Go + Web
-make fmt           Format Go + Web
-make migrate-up    Apply DB migrations
-make migrate-down  Roll back DB migrations
-make create-user   Create a user (EMAIL= PASSWORD= [ROLE=owner] [ORG=default])
-make pg-up         Start local Postgres via Docker
-make pg-down       Stop local Postgres container
-make xapi-smoke    POST + GET a test xAPI statement
+make deps                  Install Go + pnpm dependencies
+make dev api               Run Go API locally
+make dev web               Run Vite dev server
+make build                 Build API binary + Web bundle
+make test                  Run all tests
+make lint                  Lint Go + Web
+make fmt                   Format Go + Web
+make migrate up            Apply DB migrations
+make migrate down          Roll back DB migrations
+make create user           Create a user (EMAIL= PASSWORD= [ROLE=owner] [ORG=default])
+make pg up                 Start local Postgres via Docker
+make pg down               Stop local Postgres container
+make xapi smoke            POST + GET a test xAPI statement
 ```
 
 ---

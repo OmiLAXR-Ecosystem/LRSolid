@@ -5,7 +5,7 @@ services:
       POSTGRES_USER: lrsolid
       POSTGRES_PASSWORD: lrsolid
       POSTGRES_DB: lrsolid
-    ports: ["5432:5432"]
+    ports: ["${DEV_POSTGRES_PORT:-5433}:5432"]
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
     healthcheck:
@@ -33,7 +33,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports: ["8080:8080"]
+    ports: ["${DEV_API_PORT:-8081}:8080"]
 
   web:
     image: node:20-alpine
@@ -44,7 +44,7 @@ services:
     volumes:
       - ./apps/web:/app
       - web_node_modules:/app/node_modules
-    ports: ["5173:5173"]
+    ports: ["${DEV_WEB_PORT:-5174}:5173"]
     depends_on: [api]
 
 volumes:
