@@ -2,9 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +20,7 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
+	"github.com/SGoerzen/LRSolid/internal/plugins"
 	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
@@ -87,46 +91,74 @@ func getOrgID(ctx context.Context, db *pgxpool.Pool, slug string) (string, error
 	return id, err
 }
 
+func requireAdminClaims(ctx context.Context) (auth.Claims, bool) {
+	claims, ok := auth.ClaimsFromContext(ctx)
+	if !ok {
+		return auth.Claims{}, false
+	}
+	if claims.Role != "admin" && claims.Role != "owner" {
+		return auth.Claims{}, false
+	}
+	return claims, true
+}
+
+func isValidOrgRole(role string) bool {
+	switch role {
+	case "owner", "admin", "member", "viewer":
+		return true
+	default:
+		return false
+	}
+}
+
+var orgSlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
+func slugifyOrgName(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	var b strings.Builder
+	b.Grow(len(s))
+
+	lastWasDash := false
+	for _, r := range s {
+		isAZ := r >= 'a' && r <= 'z'
+		is09 := r >= '0' && r <= '9'
+		if isAZ || is09 {
+			b.WriteRune(r)
+			lastWasDash = false
+			continue
+		}
+		if b.Len() > 0 && !lastWasDash {
+			b.WriteByte('-')
+			lastWasDash = true
+		}
+	}
+
+	base := strings.Trim(b.String(), "-")
+	if base == "" {
+		return "org"
+	}
+	return base
+}
+
+func randomShortIDHex(bytes int) (string, error) {
+	b := make([]byte, bytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func generatedOrgSlug(name string) (string, error) {
+	shortID, err := randomShortIDHex(3)
+	if err != nil {
+		return "", err
+	}
+	return slugifyOrgName(name) + "-" + shortID, nil
+}
+
 // ---- Dashboard ----
 
-type dashboardResponse struct {
-	KPIs struct {
-		TotalStatements        int64 `json:"totalStatements"`
-		ActiveUsers            int64 `json:"activeUsers"`
-		StatementsToday        int64 `json:"statementsToday"`
-		ErrorLogs              int64 `json:"errorLogs"`
-		ProjectsCount          int64 `json:"projectsCount"`
-		LRSCount               int64 `json:"lrsCount"`
-		ClientsCount           int64 `json:"clientsCount"`
-		ProjectsWithStatements int64 `json:"projectsWithStatements"`
-		LRSWithStatements      int64 `json:"lrsWithStatements"`
-		ClientsWithStatements  int64 `json:"clientsWithStatements"`
-	} `json:"kpis"`
-	RecentStatements []dashboardStatement `json:"recentStatements"`
-	ActivityDaily    []dashboardDayCount  `json:"activityDaily"`
-}
-
-type dashboardStatement struct {
-	ID          string     `json:"id"`
-	ActorName   *string    `json:"actorName,omitempty"`
-	ActorMBox   *string    `json:"actorMbox,omitempty"`
-	VerbID      *string    `json:"verbId,omitempty"`
-	ObjectID    *string    `json:"objectId,omitempty"`
-	TenantID    string     `json:"tenantId"`
-	LRSName     *string    `json:"lrsName,omitempty"`
-	ProjectName string     `json:"projectName"`
-	ClientID    *string    `json:"clientId,omitempty"`
-	ClientName  *string    `json:"clientName,omitempty"`
-	StoredAt    time.Time  `json:"storedAt"`
-	Timestamp   *time.Time `json:"timestamp,omitempty"`
-}
-
-type dashboardDayCount struct {
-	Day   string `json:"day"`
-	Count int64  `json:"count"`
-}
-
-func AdminDashboard(_ config.Config, db *pgxpool.Pool) http.HandlerFunc {
+func AdminDashboard(_ config.Config, db *pgxpool.Pool, registry *plugins.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		claims, ok := auth.ClaimsFromContext(ctx)
@@ -154,188 +186,22 @@ func AdminDashboard(_ config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		var total int64
-		if err := db.QueryRow(ctx, `SELECT statement_count FROM organisations WHERE id=$1`, orgID).Scan(&total); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query total statements failed"})
-			return
+		// Precedence: user config → org config → default (all widgets).
+		entries := loadConfig(ctx, db, orgID, &claims.UserID)
+		if entries == nil {
+			entries = loadConfig(ctx, db, orgID, nil)
+		}
+		if entries == nil {
+			entries = registry.DefaultEntries()
 		}
 
-		var projectsCount int64
-		if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM projects WHERE org_id=$1`, orgID).Scan(&projectsCount); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query projects count failed"})
-			return
-		}
-
-		var lrsCount int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(*)
-			FROM lrs l
-			JOIN projects p ON p.id = l.project_id
-			WHERE p.org_id = $1
-		`, orgID).Scan(&lrsCount); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query lrs count failed"})
-			return
-		}
-
-		var clientsCount int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(*)
-			FROM clients c
-			JOIN projects p ON p.id = c.project_id
-			WHERE p.org_id = $1
-		`, orgID).Scan(&clientsCount); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query clients count failed"})
-			return
-		}
-
-		var projectsWithStatements int64
-		if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM projects WHERE org_id=$1 AND statement_count > 0`, orgID).Scan(&projectsWithStatements); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query projects with statements failed"})
-			return
-		}
-
-		var lrsWithStatements int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(*)
-			FROM lrs l
-			JOIN projects p ON p.id = l.project_id
-			WHERE p.org_id = $1 AND l.statement_count > 0
-		`, orgID).Scan(&lrsWithStatements); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query lrs with statements failed"})
-			return
-		}
-
-		var clientsWithStatements int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(*)
-			FROM clients c
-			JOIN projects p ON p.id = c.project_id
-			WHERE p.org_id = $1 AND c.statement_count > 0
-		`, orgID).Scan(&clientsWithStatements); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query clients with statements failed"})
-			return
-		}
-
-		now := time.Now().UTC()
-		startOfDay := now.Format("2006-01-02")
-		var today int64
-		if err := db.QueryRow(ctx, `
-			SELECT COALESCE(statement_count, 0)
-			FROM statement_stats_daily
-			WHERE day = $1::date
-			  AND scope_type = 'organisation'
-			  AND scope_id = $2
-		`, startOfDay, orgID).Scan(&today); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				today = 0
-			} else {
-				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query statements today failed"})
-				return
-			}
-		}
-
-		lookback := now.Add(-30 * 24 * time.Hour)
-		var active int64
-		if err := db.QueryRow(ctx, `
-			SELECT COUNT(DISTINCT st.actor_mbox)
-			FROM statements st
-			JOIN lrs l ON l.id = st.tenant_id
-			JOIN projects p ON p.id = l.project_id
-			WHERE p.org_id = $1
-			  AND st.actor_mbox IS NOT NULL
-			  AND st.stored_at >= $2
-		`, orgID, lookback).Scan(&active); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query active users failed"})
-			return
-		}
-
-		rows, err := db.Query(ctx, `
-			SELECT
-				st.id,
-				st.statement->'actor'->>'name' AS actor_name,
-				st.actor_mbox,
-				st.verb_id,
-				st.object_id,
-				st.tenant_id,
-				l.name AS lrs_name,
-				p.name AS project_name,
-				st.client_id::text,
-				c.name AS client_name,
-				st.stored_at,
-				(st.statement->>'timestamp')::timestamptz
-			FROM statements st
-			JOIN lrs l ON l.id = st.tenant_id
-			JOIN projects p ON p.id = l.project_id
-			LEFT JOIN clients c ON c.id = st.client_id
-			WHERE p.org_id = $1
-			ORDER BY st.stored_at DESC, st.id DESC
-			LIMIT 5
-		`, orgID)
+		widgets, err := registry.FetchAll(ctx, db, orgID, entries)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query recent statements failed"})
-			return
-		}
-		defer rows.Close()
-
-		recent := make([]dashboardStatement, 0, 5)
-		for rows.Next() {
-			var st dashboardStatement
-			var ts *time.Time
-			if err := rows.Scan(&st.ID, &st.ActorName, &st.ActorMBox, &st.VerbID, &st.ObjectID, &st.TenantID, &st.LRSName, &st.ProjectName, &st.ClientID, &st.ClientName, &st.StoredAt, &ts); err != nil {
-				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan recent statements failed"})
-				return
-			}
-			st.Timestamp = ts
-			recent = append(recent, st)
-		}
-		if err := rows.Err(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "read recent statements failed"})
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error()})
 			return
 		}
 
-		activityRows, err := db.Query(ctx, `
-			SELECT day::text, statement_count
-			FROM statement_stats_daily
-			WHERE scope_type = 'organisation'
-			  AND scope_id = $1
-			  AND day >= (current_date - INTERVAL '6 days')::date
-			ORDER BY day ASC
-		`, orgID)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "query activity failed"})
-			return
-		}
-		defer activityRows.Close()
-
-		activity := make([]dashboardDayCount, 0, 7)
-		for activityRows.Next() {
-			var d dashboardDayCount
-			if err := activityRows.Scan(&d.Day, &d.Count); err != nil {
-				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan activity failed"})
-				return
-			}
-			activity = append(activity, d)
-		}
-		if err := activityRows.Err(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "read activity failed"})
-			return
-		}
-
-		var resp dashboardResponse
-		resp.KPIs.TotalStatements = total
-		resp.KPIs.ActiveUsers = active
-		resp.KPIs.StatementsToday = today
-		resp.KPIs.ErrorLogs = 0
-		resp.KPIs.ProjectsCount = projectsCount
-		resp.KPIs.LRSCount = lrsCount
-		resp.KPIs.ClientsCount = clientsCount
-		resp.KPIs.ProjectsWithStatements = projectsWithStatements
-		resp.KPIs.LRSWithStatements = lrsWithStatements
-		resp.KPIs.ClientsWithStatements = clientsWithStatements
-		resp.RecentStatements = recent
-		resp.ActivityDaily = activity
-
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusOK, map[string]any{"widgets": widgets, "layout": entries})
 	}
 }
 
@@ -479,6 +345,83 @@ type adminUsersResponse struct {
 	Offset int         `json:"offset"`
 }
 
+type createOrgRequest struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+func AdminCreateOrg(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if _, ok := requireAdminClaims(ctx); !ok {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: "admin access required"})
+			return
+		}
+
+		var req createOrgRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+
+		req.Name = strings.TrimSpace(req.Name)
+		req.Slug = strings.ToLower(strings.TrimSpace(req.Slug))
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "name is required"})
+			return
+		}
+		if req.Slug != "" && !orgSlugPattern.MatchString(req.Slug) {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "slug must match [a-z0-9-] and cannot start/end with '-'"})
+			return
+		}
+
+		insertWithSlug := func(slug string) (restOrg, error) {
+			var org restOrg
+			err := db.QueryRow(ctx, `
+				INSERT INTO organisations (slug, name)
+				VALUES ($1, $2)
+				RETURNING id, slug, name, statement_count
+			`, slug, req.Name).Scan(&org.ID, &org.Slug, &org.Name, &org.StatementCount)
+			return org, err
+		}
+
+		if req.Slug != "" {
+			org, err := insertWithSlug(req.Slug)
+			if err != nil {
+				if strings.Contains(err.Error(), "organisations_slug_key") {
+					writeJSON(w, http.StatusConflict, errorResponse{Error: "organization slug already exists"})
+					return
+				}
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create organization failed"})
+				return
+			}
+			writeJSON(w, http.StatusCreated, org)
+			return
+		}
+
+		for i := 0; i < 5; i++ {
+			autoSlug, err := generatedOrgSlug(req.Name)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create organization failed"})
+				return
+			}
+			org, err := insertWithSlug(autoSlug)
+			if err != nil {
+				if strings.Contains(err.Error(), "organisations_slug_key") {
+					continue
+				}
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create organization failed"})
+				return
+			}
+			writeJSON(w, http.StatusCreated, org)
+			return
+		}
+
+		writeJSON(w, http.StatusConflict, errorResponse{Error: "organization slug already exists"})
+		return
+	}
+}
+
 func AdminListUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -567,22 +510,34 @@ type createUserRequest struct {
 	DisplayName *string `json:"displayName,omitempty"`
 	Password    string  `json:"password"`
 	Role        string  `json:"role"`
+	OrgSlug     string  `json:"orgSlug"`
 }
 
-func AdminCreateUser(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+func AdminCreateUser(_ config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		if _, ok := requireAdminClaims(ctx); !ok {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: "admin access required"})
+			return
+		}
+
 		var req createUserRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
 			return
 		}
-		if req.Email == "" || req.Password == "" || req.Role == "" {
-			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "email, password, role are required"})
+		req.Email = strings.TrimSpace(req.Email)
+		req.OrgSlug = strings.TrimSpace(req.OrgSlug)
+		if req.Email == "" || req.Password == "" || req.Role == "" || req.OrgSlug == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "email, password, role, orgSlug are required"})
+			return
+		}
+		if !isValidOrgRole(req.Role) {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "role must be owner, admin, member, or viewer"})
 			return
 		}
 
-		orgID, err := getOrgID(ctx, db, cfg.DefaultOrg)
+		orgID, err := getOrgID(ctx, db, req.OrgSlug)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup org failed"})
 			return
@@ -639,6 +594,75 @@ func AdminCreateUser(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			Name:  req.DisplayName,
 			Email: req.Email,
 			Role:  req.Role,
+		})
+	}
+}
+
+type assignUserToOrgRequest struct {
+	Email   string `json:"email"`
+	OrgSlug string `json:"orgSlug"`
+	Role    string `json:"role"`
+}
+
+func AdminAssignUserToOrg(_ config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if _, ok := requireAdminClaims(ctx); !ok {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: "admin access required"})
+			return
+		}
+
+		var req assignUserToOrgRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+
+		req.Email = strings.TrimSpace(req.Email)
+		req.OrgSlug = strings.TrimSpace(req.OrgSlug)
+		if req.Email == "" || req.OrgSlug == "" || req.Role == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "email, orgSlug and role are required"})
+			return
+		}
+		if !isValidOrgRole(req.Role) {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "role must be owner, admin, member, or viewer"})
+			return
+		}
+
+		orgID, err := getOrgID(ctx, db, req.OrgSlug)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup org failed"})
+			return
+		}
+		if orgID == "" {
+			writeJSON(w, http.StatusNotFound, errorResponse{Error: "organization not found"})
+			return
+		}
+
+		var userID string
+		if err := db.QueryRow(ctx, `SELECT id FROM users WHERE email=$1`, req.Email).Scan(&userID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, errorResponse{Error: "user not found"})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup user failed"})
+			return
+		}
+
+		if _, err := db.Exec(ctx, `
+			INSERT INTO org_memberships (org_id, user_id, role)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role
+		`, orgID, userID, req.Role); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "assign user failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"userId":  userID,
+			"email":   req.Email,
+			"orgSlug": req.OrgSlug,
+			"role":    req.Role,
 		})
 	}
 }

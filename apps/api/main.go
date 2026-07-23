@@ -18,7 +18,13 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/httpapi"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
+	"github.com/SGoerzen/LRSolid/internal/plugins"
+	"github.com/SGoerzen/LRSolid/internal/plugins/builtin"
+	"github.com/SGoerzen/LRSolid/internal/plugins/jsplugin"
+	"github.com/SGoerzen/LRSolid/internal/secrets"
 	"github.com/SGoerzen/LRSolid/internal/statsrollup"
+	"github.com/SGoerzen/LRSolid/internal/store"
+	mgstore "github.com/SGoerzen/LRSolid/internal/store/mongodb"
 	pgstore "github.com/SGoerzen/LRSolid/internal/store/postgres"
 )
 
@@ -55,10 +61,78 @@ func main() {
 	}
 	defer db.Close()
 
-	stmtStore := pgstore.NewStatementStore(db)
-	svc := lrs.NewService(stmtStore)
+	storeRegistry := store.NewRegistry()
+	storeRegistry.RegisterFactory("postgres", pgstore.NewStoreBundle)
+	storeRegistry.RegisterFactory("mongodb", mgstore.NewStoreBundle)
 
-	router := httpapi.NewRouter(cfg, svc, db)
+	var dataSecretStore secrets.Store
+	if cfg.DataStoreSecretKey != "" {
+		dataSecretStore, err = secrets.NewPostgresStore(db, cfg.DataStoreSecretKey)
+		if err != nil {
+			log.Fatal().Err(err).Msg("data store secret store init failed")
+		}
+	} else {
+		log.Warn().Msg("DATA_STORE_SECRET_KEY not set; encrypted external data store credentials are unavailable")
+	}
+
+	// Load all active data stores with credentials and register them.
+	dsRows, err := db.Query(ctx, `
+		SELECT id::text, name, database_type, connection_string, secret_ref
+		FROM data_stores
+		WHERE is_active = true
+		  AND (
+		    (connection_string IS NOT NULL AND connection_string != '')
+		    OR (secret_ref IS NOT NULL AND secret_ref != '')
+		  )
+	`)
+	if err != nil {
+		log.Fatal().Err(err).Msg("load data stores failed")
+	}
+	for dsRows.Next() {
+		var cfg store.DataStoreConfig
+		var connectionString *string
+		var secretRef *string
+		if err := dsRows.Scan(&cfg.ID, &cfg.Name, &cfg.DatabaseType, &connectionString, &secretRef); err != nil {
+			log.Fatal().Err(err).Msg("scan data store failed")
+		}
+		if secretRef != nil && *secretRef != "" {
+			if dataSecretStore == nil {
+				log.Warn().Str("name", cfg.Name).Msg("data store has encrypted credentials but DATA_STORE_SECRET_KEY is not configured, skipping")
+				continue
+			}
+			plaintext, err := dataSecretStore.Get(ctx, *secretRef)
+			if err != nil {
+				log.Warn().Err(err).Str("name", cfg.Name).Msg("load data store credentials failed, skipping")
+				continue
+			}
+			cfg.ConnectionString = string(plaintext)
+		} else if connectionString != nil {
+			cfg.ConnectionString = *connectionString
+		}
+		if err := storeRegistry.Register(ctx, cfg); err != nil {
+			log.Warn().Err(err).Str("name", cfg.Name).Msg("data store registration failed, skipping")
+		} else {
+			log.Info().Str("name", cfg.Name).Str("type", cfg.DatabaseType).Msg("data store registered")
+		}
+	}
+	dsRows.Close()
+
+	// Default fallback: the control-plane Postgres (no connection_string needed).
+	fallbackStmtStore := pgstore.NewStatementStore(db)
+	svc := lrs.NewService(storeRegistry, fallbackStmtStore)
+
+	registry := plugins.Global
+	builtin.Register(registry)
+
+	if cfg.PluginsDir != "" {
+		n, err := jsplugin.LoadDir(cfg.PluginsDir, registry)
+		if err != nil {
+			log.Fatal().Err(err).Msg("js plugins load failed")
+		}
+		log.Info().Int("count", n).Str("dir", cfg.PluginsDir).Msg("js plugins loaded")
+	}
+
+	router := httpapi.NewRouter(cfg, svc, db, registry, dataSecretStore)
 
 	if cfg.StatsRollupEnabled {
 		worker := statsrollup.New(db)

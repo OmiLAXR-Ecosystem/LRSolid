@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -10,7 +11,9 @@ type Config struct {
 	Environment string
 
 	// Storage
-	PostgresDSN string
+	PostgresDSN            string
+	DataStoreSecretKey     string
+	DataStoreSecretKeyFile string
 
 	// xAPI basics
 	DefaultTenant string
@@ -22,28 +25,73 @@ type Config struct {
 	// Auth
 	JWTSecret string // Required in production. Set via JWT_SECRET env var.
 
+	// SMTP (for invitation emails)
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUser     string
+	SMTPPassword string
+	SMTPFrom     string
+
+	// App base URL (used in invite links)
+	AppURL string
+
 	// Async statement stats rollup
 	StatsRollupEnabled   bool
 	StatsRollupIntervalS int
 	StatsRollupBatchSize int
+
+	// JS plugins directory (optional). Set via PLUGINS_DIR env var.
+	PluginsDir string
+
+	// Export defaults (org settings seed)
+	ExportDefaultTargetType string
+	ExportS3UploadBaseURL   string
+	ExportS3AccessKey       string
+	ExportS3SecretKey       string
+	ExportS3Region          string
+	ExportS3AuthToken       string
+	ExportS3PathPrefix      string
 }
 
 func Load() (Config, error) {
 	c := Config{
-		Port:                 getenv("PORT", "8080"),
-		Environment:          getenv("ENV", "dev"),
-		PostgresDSN:          getenv("PG_DSN", ""),
-		DefaultTenant:        getenv("DEFAULT_TENANT", "default"),
-		MaxPageLimit:         getenvInt("MAX_PAGE_LIMIT", 100),
-		DefaultOrg:           getenv("DEFAULT_ORG", "default"),
-		JWTSecret:            getenv("JWT_SECRET", ""),
-		StatsRollupEnabled:   getenvBool("STATS_ROLLUP_ENABLED", true),
-		StatsRollupIntervalS: getenvInt("STATS_ROLLUP_INTERVAL_S", 15),
-		StatsRollupBatchSize: getenvInt("STATS_ROLLUP_BATCH_SIZE", 5000),
+		Port:                    getenv("PORT", "8080"),
+		Environment:             getenv("ENV", "dev"),
+		PostgresDSN:             getenv("PG_DSN", ""),
+		DataStoreSecretKey:      getenv("DATA_STORE_SECRET_KEY", ""),
+		DataStoreSecretKeyFile:  getenv("DATA_STORE_SECRET_KEY_FILE", ""),
+		DefaultTenant:           getenv("DEFAULT_TENANT", "default"),
+		MaxPageLimit:            getenvInt("MAX_PAGE_LIMIT", 100),
+		DefaultOrg:              getenv("DEFAULT_ORG", "default"),
+		JWTSecret:               getenv("JWT_SECRET", ""),
+		SMTPHost:                getenv("SMTP_HOST", ""),
+		SMTPPort:                getenvInt("SMTP_PORT", 587),
+		SMTPUser:                getenv("SMTP_USER", ""),
+		SMTPPassword:            getenv("SMTP_PASSWORD", ""),
+		SMTPFrom:                getenv("SMTP_FROM", "noreply@localhost"),
+		AppURL:                  getenv("APP_URL", "http://localhost:5173"),
+		StatsRollupEnabled:      getenvBool("STATS_ROLLUP_ENABLED", true),
+		StatsRollupIntervalS:    getenvInt("STATS_ROLLUP_INTERVAL_S", 15),
+		StatsRollupBatchSize:    getenvInt("STATS_ROLLUP_BATCH_SIZE", 5000),
+		PluginsDir:              getenv("PLUGINS_DIR", ""),
+		ExportDefaultTargetType: strings.ToLower(getenv("EXPORT_DEFAULT_TARGET_TYPE", "s3")),
+		ExportS3UploadBaseURL:   getenv("EXPORT_S3_UPLOAD_BASE_URL", ""),
+		ExportS3AccessKey:       getenv("EXPORT_S3_ACCESS_KEY", ""),
+		ExportS3SecretKey:       getenv("EXPORT_S3_SECRET_KEY", ""),
+		ExportS3Region:          getenv("EXPORT_S3_REGION", "us-east-1"),
+		ExportS3AuthToken:       getenv("EXPORT_S3_AUTH_TOKEN", ""),
+		ExportS3PathPrefix:      getenv("EXPORT_S3_PATH_PREFIX", "exports"),
 	}
 
 	if c.PostgresDSN == "" {
 		return Config{}, fmt.Errorf("PG_DSN is required")
+	}
+	if c.DataStoreSecretKey == "" && c.DataStoreSecretKeyFile != "" {
+		b, err := os.ReadFile(c.DataStoreSecretKeyFile)
+		if err != nil {
+			return Config{}, fmt.Errorf("read DATA_STORE_SECRET_KEY_FILE: %w", err)
+		}
+		c.DataStoreSecretKey = strings.TrimSpace(string(b))
 	}
 	if c.MaxPageLimit <= 0 || c.MaxPageLimit > 1000 {
 		c.MaxPageLimit = 100
@@ -60,6 +108,14 @@ func Load() (Config, error) {
 		}
 		// Dev-only fallback — never use in production
 		c.JWTSecret = "dev-only-insecure-secret-change-me"
+	}
+	switch c.ExportDefaultTargetType {
+	case "local", "s3":
+	default:
+		c.ExportDefaultTargetType = "s3"
+	}
+	if strings.TrimSpace(c.ExportS3PathPrefix) == "" {
+		c.ExportS3PathPrefix = "exports"
 	}
 	return c, nil
 }

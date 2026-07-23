@@ -12,10 +12,12 @@ export type StatementQuery = {
 };
 
 export async function fetchStatementList(
+    org: string,
     query: StatementQuery,
     signal?: AbortSignal,
 ): Promise<ConnectionResponse> {
     const params = new URLSearchParams();
+    params.set("org", org);
     params.set("first", String(query.limit));
     if (query.actorMbox) params.set("actor_mbox", query.actorMbox);
     if (query.verbId) params.set("verb", query.verbId);
@@ -26,8 +28,10 @@ export async function fetchStatementList(
     return apiFetch<ConnectionResponse>(`/api/connection/statement?${params.toString()}`, { signal });
 }
 
-export async function fetchStatementById(id: string, signal?: AbortSignal): Promise<StatementDetail> {
-    return apiFetch<StatementDetail>(`/api/statement/${encodeURIComponent(id)}`, { signal });
+export async function fetchStatementById(org: string, id: string, signal?: AbortSignal): Promise<StatementDetail> {
+    const params = new URLSearchParams();
+    params.set("org", org);
+    return apiFetch<StatementDetail>(`/api/statement/${encodeURIComponent(id)}?${params.toString()}`, { signal });
 }
 
 export async function voidStatement(statementId: string): Promise<void> {

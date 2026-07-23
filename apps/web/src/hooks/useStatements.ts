@@ -5,6 +5,7 @@ import {
     voidStatement as apiVoidStatement,
     downloadStatementJson,
 } from "../api/statements";
+import { useOrg } from "../contexts/OrgContext";
 import type { StatementDetail, StatementRow } from "../types/statement";
 
 export type StatementFilters = {
@@ -30,6 +31,7 @@ const DEFAULT_FILTERS: StatementFilters = {
 type ConfirmFn = (options: { title: string; message: string; confirmLabel?: string; destructive?: boolean }) => Promise<boolean>;
 
 export function useStatements(confirmFn?: ConfirmFn) {
+    const { currentOrg } = useOrg();
     const [filters, setFiltersState] = useState<StatementFilters>(DEFAULT_FILTERS);
     const [items, setItems] = useState<StatementRow[]>([]);
     const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -49,12 +51,13 @@ export function useStatements(confirmFn?: ConfirmFn) {
     };
 
     const load = async (cursor: string | null, resetHistory: boolean, currentFilters: StatementFilters) => {
+        if (!currentOrg) return;
         setLoading(true);
         setError(null);
         const controller = new AbortController();
         try {
             if (currentFilters.statementId.trim()) {
-                const d = await fetchStatementById(currentFilters.statementId.trim(), controller.signal);
+                const d = await fetchStatementById(currentOrg, currentFilters.statementId.trim(), controller.signal);
                 setItems([
                     {
                         id: d.id,
@@ -68,6 +71,7 @@ export function useStatements(confirmFn?: ConfirmFn) {
                 setNextCursor(null);
             } else {
                 const data = await fetchStatementList(
+                    currentOrg,
                     {
                         limit: currentFilters.limit,
                         actorMbox: currentFilters.actorMbox.trim() || undefined,
@@ -96,9 +100,10 @@ export function useStatements(confirmFn?: ConfirmFn) {
     };
 
     useEffect(() => {
+        if (!currentOrg) return;
         void load(null, true, filters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [currentOrg]);
 
     const applyFilters = () => void load(null, true, filters);
     const refresh = () => void load(null, true, filters);
@@ -122,11 +127,12 @@ export function useStatements(confirmFn?: ConfirmFn) {
     };
 
     const openDetail = async (id: string) => {
+        if (!currentOrg) return;
         setDetailOpen(true);
         setDetailLoading(true);
         setDetailError(null);
         try {
-            const d = await fetchStatementById(id);
+            const d = await fetchStatementById(currentOrg, id);
             setDetail(d);
         } catch (err) {
             setDetailError(err instanceof Error ? err.message : "Unknown error");

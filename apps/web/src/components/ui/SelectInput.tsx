@@ -3,7 +3,7 @@ import { ChevronDown } from "lucide-react";
 type SelectInputProps = {
     value: string;
     onChange: (value: string) => void;
-    options: { label: string; value: string }[];
+    options: { label: string; value: string; disabled?: boolean }[];
 };
 
 export function SelectInput({ value, onChange, options }: SelectInputProps) {
@@ -15,7 +15,7 @@ export function SelectInput({ value, onChange, options }: SelectInputProps) {
                 className="w-full appearance-none rounded-lg bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200 focus:ring-2 focus:ring-teal-300 focus:outline-none"
             >
                 {options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
+                    <option key={opt.value} value={opt.value} disabled={opt.disabled}>
                         {opt.label}
                     </option>
                 ))}

@@ -100,54 +100,48 @@ In addition to user roles, **Clients** are machine auth entities (xAPI Basic Aut
 - Node.js 20+ / pnpm 9+
 - PostgreSQL 15+ (or Docker)
 
-### 1. Clone and install dependencies
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/SGoerzen/LRSolid.git
 cd LRSolid
-make deps
 ```
 
-### 2. Configure environment
+### 2. Start the development stack
+
+```bash
+make dev
+```
+
+This starts PostgreSQL on port `5433`, the Go API with live reload at `http://localhost:8081`, and the Vite development server at `http://localhost:5174`. Press Ctrl+C to stop the stack.
+
+If any port is already occupied, override it when starting the stack:
+
+```bash
+DEV_POSTGRES_PORT=55432 DEV_API_PORT=18080 DEV_WEB_PORT=15173 make dev
+```
+
+To run the API and web app directly on the host instead, install the dependencies and start each server in a separate terminal:
 
 ```bash
 cp .env.example .env
-# Edit .env — set PG_DSN, JWT_SECRET
-```
-
-Generate a strong JWT secret:
-
-```bash
-openssl rand -hex 32
-```
-
-### 3. Start a local PostgreSQL instance (optional)
-
-```bash
+# Edit .env and set PG_DSN and JWT_SECRET.
+make deps
 make pg up
-```
-
-### 4. Run database migrations
-
-```bash
 make migrate up
+make dev api   # Go API on :8080
+make dev web   # Vite dev server on :5173
 ```
 
-### 5. Create the first user
+### 3. Create the first user
+
+With the development stack running, create a user in another terminal:
 
 ```bash
-make owner EMAIL=you@example.com PASSWORD=secret
+make user create EMAIL=you@example.com PASSWORD=secret ROLE=owner
 ```
 
 Available roles: `owner`, `admin`, `member`, `viewer`
-
-### 6. Run the development servers
-
-In two separate terminals:
-
-```bash
-make dev       # Development stack with live reload
-```
 
 ---
 
@@ -155,7 +149,7 @@ make dev       # Development stack with live reload
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `PG_DSN` | Yes | `postgres://...localhost/lrsolid` | PostgreSQL connection string |
+| `PG_DSN` | Yes | `postgres://lrsolid:lrsolid@localhost:5433/lrsolid?sslmode=disable` | PostgreSQL connection string |
 | `JWT_SECRET` | Yes (prod) | dev fallback | HMAC-SHA256 signing secret for session tokens |
 | `DEFAULT_ORG` | No | `default` | Slug of the default organisation |
 
@@ -196,7 +190,7 @@ make dev       # Development stack with live reload
 1. Create a client (while logged in with session cookie):
 
 ```bash
-curl -sS -X POST http://localhost:8080/api/v1/client \
+curl -sS -X POST http://localhost:8081/api/v1/client \
   -H 'Content-Type: application/json' \
   -H 'Cookie: lrsolid_session=YOUR_SESSION_COOKIE' \
   -d '{"name":"local-cli","scopes":{"statements:read":true,"statements:write":true}}'
@@ -208,7 +202,7 @@ curl -sS -X POST http://localhost:8080/api/v1/client \
 curl -sS -u "YOUR_KEY_ID:YOUR_SECRET" \
   -H 'Content-Type: application/json' \
   -H 'X-Experience-API-Version: 1.0.3' \
-  -X POST http://localhost:8080/xapi/statements \
+  -X POST http://localhost:8081/xapi/statements \
   -d '{"statement":{"actor":{"mbox":"mailto:sergej@example.org"},"verb":{"id":"http://adlnet.gov/expapi/verbs/experienced","display":{"en-US":"experienced"}},"object":{"id":"https://example.org/activity/intro"}}}'
 ```
 
@@ -241,28 +235,19 @@ make migrate down  # Roll back one migration
 ## Makefile Targets
 
 ```
-make deps          Install Go + pnpm dependencies
-make dev           Start the development stack with live reload
-make up            Start the production stack
-make down          Stop both development and production stacks
-make build         Build API binary + Web bundle
-make build api     Build only the API
-make build web     Build only the Web UI
-make test          Run all tests
-make test api      Run only API tests
-make test web      Run only Web tests
-make lint          Lint Go + Web
-make fmt           Format Go + Web
-make migrate up    Apply DB migrations
-make migrate down  Roll back DB migrations
-make admin         Create an admin (EMAIL= PASSWORD= [ORG=default])
-make owner         Create an owner (EMAIL= PASSWORD= [ORG=default])
-make user          Create a normal user/member (EMAIL= PASSWORD= [ORG=default])
-make pg up         Start local Postgres via Docker
-make pg down       Stop local Postgres container
-make xapi post     POST a test xAPI statement
-make xapi get      GET a test xAPI statement
-make xapi smoke    POST + GET a test xAPI statement
+make deps                  Install Go + pnpm dependencies
+make dev api               Run Go API locally
+make dev web               Run Vite dev server
+make build                 Build API binary + Web bundle
+make test                  Run all tests
+make lint                  Lint Go + Web
+make fmt                   Format Go + Web
+make migrate up            Apply DB migrations
+make migrate down          Roll back DB migrations
+make user create           Create a user (EMAIL= PASSWORD= [ROLE=owner] [ORG=default])
+make pg up                 Start local Postgres via Docker
+make pg down               Stop local Postgres container
+make xapi smoke            POST + GET a test xAPI statement
 ```
 
 ---
@@ -275,6 +260,22 @@ make xapi smoke    POST + GET a test xAPI statement
 | [docs/adr-0002.md](docs/adr-0002.md) | xAPI statement schema: column extraction, denormalisation |
 | [docs/adr-0003.md](docs/adr-0003.md) | Analytics architecture: Kafka + ClickHouse/TimescaleDB |
 | [docs/frontend-components.md](docs/frontend-components.md) | React component reference |
+
+---
+
+## Research Software Metadata
+
+| File | Purpose |
+|------|---------|
+| [CITATION.cff](CITATION.cff) | Citation metadata for GitHub, Zotero, and related tooling |
+| [codemeta.json](codemeta.json) | FAIR research software metadata in CodeMeta JSON-LD format |
+| [CHANGELOG.md](CHANGELOG.md) | Release history and notable changes |
+| [AUTHORS.md](AUTHORS.md) | Maintainers, authors, and institutional cooperation |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development and contribution guidelines |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community conduct expectations |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting and supported versions |
+
+If you use LRSolid in research, teaching, or publications, please cite it using the metadata in [CITATION.cff](CITATION.cff).
 
 ---
 

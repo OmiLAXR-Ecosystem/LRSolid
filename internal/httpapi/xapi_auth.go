@@ -18,12 +18,20 @@ type clientAuthContextKey string
 
 const xapiTenantKey clientAuthContextKey = "xapi_tenant"
 const xapiClientIDKey clientAuthContextKey = "xapi_client_id"
+const xapiDataStoreIDKey clientAuthContextKey = "xapi_data_store_id"
 
 func tenantFromRequest(ctx context.Context, cfg config.Config) string {
 	if tenant, ok := ctx.Value(xapiTenantKey).(string); ok && tenant != "" {
 		return tenant
 	}
 	return cfg.DefaultTenant
+}
+
+func dataStoreIDFromRequest(ctx context.Context) string {
+	if id, ok := ctx.Value(xapiDataStoreIDKey).(string); ok {
+		return id
+	}
+	return ""
 }
 
 func clientIDFromRequest(ctx context.Context) *string {
@@ -83,15 +91,17 @@ func XAPIClientAuth(cfg config.Config, db *pgxpool.Pool) func(http.Handler) http
 			var clientID string
 			var secretHash string
 			var lrsID *string
+			var dataStoreID *string
 			var scopesJSON []byte
 			var expiresAt *time.Time
 			err := db.QueryRow(r.Context(), `
-				SELECT id::text, secret_hash, lrs_id, scopes::text, expires_at
-				FROM clients
-				WHERE key_id = $1
-				  AND revoked_at IS NULL
+				SELECT c.id::text, c.secret_hash, c.lrs_id, l.data_store_id::text, c.scopes::text, c.expires_at
+				FROM clients c
+				LEFT JOIN lrs l ON l.id = c.lrs_id
+				WHERE c.key_id = $1
+				  AND c.revoked_at IS NULL
 				LIMIT 1
-			`, keyID).Scan(&clientID, &secretHash, &lrsID, &scopesJSON, &expiresAt)
+			`, keyID).Scan(&clientID, &secretHash, &lrsID, &dataStoreID, &scopesJSON, &expiresAt)
 			if err != nil {
 				writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "invalid client credentials"})
 				return
@@ -118,6 +128,9 @@ func XAPIClientAuth(cfg config.Config, db *pgxpool.Pool) func(http.Handler) http
 
 			ctx := context.WithValue(r.Context(), xapiTenantKey, tenant)
 			ctx = context.WithValue(ctx, xapiClientIDKey, clientID)
+			if dataStoreID != nil && *dataStoreID != "" {
+				ctx = context.WithValue(ctx, xapiDataStoreIDKey, *dataStoreID)
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

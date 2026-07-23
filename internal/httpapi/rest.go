@@ -20,6 +20,8 @@ import (
 
 	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
+	emailpkg "github.com/SGoerzen/LRSolid/internal/email"
+	"github.com/SGoerzen/LRSolid/internal/secrets"
 )
 
 type restUser struct {
@@ -124,15 +126,43 @@ type createProjectRequest struct {
 }
 
 type restDataStore struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	DatabaseType string `json:"databaseType"`
-	Host         string `json:"host"`
-	IsDefault    bool   `json:"isDefault"`
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	DatabaseType        string    `json:"databaseType"`
+	OrgID               *string   `json:"orgId,omitempty"`
+	IsDefault           bool      `json:"isDefault"`
+	IsActive            bool      `json:"isActive"`
+	HasConnectionString bool      `json:"hasConnectionString"`
+	Description         *string   `json:"description,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
 }
 
 type restDataStoreListResponse struct {
 	Items []restDataStore `json:"items"`
+}
+
+type createDataStoreRequest struct {
+	Name             string  `json:"name"`
+	DatabaseType     string  `json:"databaseType"`
+	ConnectionString string  `json:"connectionString"`
+	Description      *string `json:"description,omitempty"`
+	OrgID            *string `json:"orgId,omitempty"`
+}
+
+type updateDataStoreRequest struct {
+	Name             *string `json:"name,omitempty"`
+	ConnectionString *string `json:"connectionString,omitempty"`
+	Description      *string `json:"description,omitempty"`
+	IsActive         *bool   `json:"isActive,omitempty"`
+}
+
+func newDataStoreSecretRef() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return "data_store_connection_" + hex.EncodeToString(b), nil
 }
 
 type restOrg struct {
@@ -341,6 +371,82 @@ func RestCountUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"count": total})
+	}
+}
+
+type inviteUserRequest struct {
+	Email       string  `json:"email"`
+	DisplayName *string `json:"displayName,omitempty"`
+	Role        string  `json:"role"`
+}
+
+func RestInviteUser(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims, ok := auth.ClaimsFromContext(ctx)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+			return
+		}
+		orgSlug := orgFromRequest(r, cfg)
+		if err := validateOrgAccess(ctx, db, claims, orgSlug); err != nil {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: err.Error()})
+			return
+		}
+		orgID, err := getOrgID(ctx, db, orgSlug)
+		if err != nil || orgID == "" {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup org failed"})
+			return
+		}
+
+		var req inviteUserRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+		req.Email = strings.TrimSpace(req.Email)
+		if req.Email == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "email is required"})
+			return
+		}
+		validRoles := map[string]bool{"owner": true, "admin": true, "member": true, "viewer": true}
+		if !validRoles[req.Role] {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "role must be owner, admin, member, or viewer"})
+			return
+		}
+
+		tokenBytes := make([]byte, 32)
+		if _, err := rand.Read(tokenBytes); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "token generation failed"})
+			return
+		}
+		token := hex.EncodeToString(tokenBytes)
+
+		_, err = db.Exec(ctx, `
+			INSERT INTO user_invites (token, org_id, email, role, invited_by, expires_at)
+			VALUES ($1, $2, $3, $4, $5, now() + interval '7 days')
+		`, token, orgID, req.Email, req.Role, claims.UserID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create invite failed"})
+			return
+		}
+
+		inviteURL := cfg.AppURL + "/accept-invite?token=" + token
+		emailCfg := emailpkg.Config{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			User:     cfg.SMTPUser,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+		}
+		if cfg.SMTPHost != "" {
+			if err := emailpkg.SendInvite(emailCfg, req.Email, inviteURL); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "send email failed: " + err.Error()})
+				return
+			}
+		}
+
+		writeJSON(w, http.StatusCreated, map[string]any{"token": token, "inviteURL": inviteURL})
 	}
 }
 
@@ -906,7 +1012,12 @@ func RestDeleteProject(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 func RestListDataStores(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := db.Query(r.Context(), `
-			SELECT id, name, database_type, host, is_default
+			SELECT id, name, database_type, org_id, is_default, is_active,
+			       (
+			         (connection_string IS NOT NULL AND connection_string != '')
+			         OR (secret_ref IS NOT NULL AND secret_ref != '')
+			       ) AS has_connection_string,
+			       description, created_at, updated_at
 			FROM data_stores
 			WHERE is_active = true
 			ORDER BY is_default DESC, name ASC
@@ -920,7 +1031,11 @@ func RestListDataStores(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		items := make([]restDataStore, 0, 8)
 		for rows.Next() {
 			var ds restDataStore
-			if err := rows.Scan(&ds.ID, &ds.Name, &ds.DatabaseType, &ds.Host, &ds.IsDefault); err != nil {
+			if err := rows.Scan(
+				&ds.ID, &ds.Name, &ds.DatabaseType, &ds.OrgID,
+				&ds.IsDefault, &ds.IsActive, &ds.HasConnectionString,
+				&ds.Description, &ds.CreatedAt, &ds.UpdatedAt,
+			); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan data stores failed"})
 				return
 			}
@@ -932,6 +1047,177 @@ func RestListDataStores(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, restDataStoreListResponse{Items: items})
+	}
+}
+
+func AdminCreateDataStore(cfg config.Config, db *pgxpool.Pool, dataSecrets secrets.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req createDataStoreRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+		req.Name = strings.TrimSpace(req.Name)
+		req.ConnectionString = strings.TrimSpace(req.ConnectionString)
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "name required"})
+			return
+		}
+		if req.DatabaseType != "postgres" && req.DatabaseType != "mongodb" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "databaseType must be postgres or mongodb"})
+			return
+		}
+		if req.ConnectionString == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "connectionString required"})
+			return
+		}
+		if dataSecrets == nil {
+			writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "data store credential storage is not configured"})
+			return
+		}
+		secretRef, err := newDataStoreSecretRef()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "generate secret reference failed"})
+			return
+		}
+		if err := dataSecrets.Put(r.Context(), secretRef, []byte(req.ConnectionString)); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "store data store credentials failed"})
+			return
+		}
+
+		var ds restDataStore
+		err = db.QueryRow(r.Context(), `
+			INSERT INTO data_stores (name, database_type, connection_string, secret_ref, description, org_id)
+			VALUES ($1, $2, NULL, $3, $4, $5)
+			RETURNING id, name, database_type, org_id, is_default, is_active,
+			          (
+			            (connection_string IS NOT NULL AND connection_string != '')
+			            OR (secret_ref IS NOT NULL AND secret_ref != '')
+			          ),
+			          description, created_at, updated_at
+		`, req.Name, req.DatabaseType, secretRef, req.Description, req.OrgID).Scan(
+			&ds.ID, &ds.Name, &ds.DatabaseType, &ds.OrgID,
+			&ds.IsDefault, &ds.IsActive, &ds.HasConnectionString,
+			&ds.Description, &ds.CreatedAt, &ds.UpdatedAt,
+		)
+		if err != nil {
+			_ = dataSecrets.Delete(r.Context(), secretRef)
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "create data store failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, ds)
+	}
+}
+
+func AdminUpdateDataStore(cfg config.Config, db *pgxpool.Pool, dataSecrets secrets.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		var req updateDataStoreRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json"})
+			return
+		}
+		if req.ConnectionString != nil {
+			trimmed := strings.TrimSpace(*req.ConnectionString)
+			if trimmed == "" {
+				req.ConnectionString = nil
+			} else {
+				req.ConnectionString = &trimmed
+			}
+		}
+
+		var existingSecretRef *string
+		if req.ConnectionString != nil {
+			if dataSecrets == nil {
+				writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "data store credential storage is not configured"})
+				return
+			}
+			err := db.QueryRow(r.Context(), `
+				SELECT secret_ref
+				FROM data_stores
+				WHERE id = $1
+			`, id).Scan(&existingSecretRef)
+			if err != nil {
+				writeJSON(w, http.StatusNotFound, errorResponse{Error: "data store not found"})
+				return
+			}
+			secretRef := ""
+			if existingSecretRef != nil {
+				secretRef = strings.TrimSpace(*existingSecretRef)
+			}
+			if secretRef == "" {
+				var err error
+				secretRef, err = newDataStoreSecretRef()
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "generate secret reference failed"})
+					return
+				}
+			}
+			if err := dataSecrets.Put(r.Context(), secretRef, []byte(*req.ConnectionString)); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "store data store credentials failed"})
+				return
+			}
+			existingSecretRef = &secretRef
+		}
+
+		var ds restDataStore
+		err := db.QueryRow(r.Context(), `
+			UPDATE data_stores SET
+			  name             = COALESCE($2, name),
+			  connection_string = CASE WHEN $3::text IS NULL THEN connection_string ELSE NULL END,
+			  secret_ref        = COALESCE($3, secret_ref),
+			  description       = COALESCE($4, description),
+			  is_active         = COALESCE($5, is_active),
+			  updated_at       = now()
+			WHERE id = $1
+			RETURNING id, name, database_type, org_id, is_default, is_active,
+			          (
+			            (connection_string IS NOT NULL AND connection_string != '')
+			            OR (secret_ref IS NOT NULL AND secret_ref != '')
+			          ),
+			          description, created_at, updated_at
+		`, id, req.Name, existingSecretRef, req.Description, req.IsActive).Scan(
+			&ds.ID, &ds.Name, &ds.DatabaseType, &ds.OrgID,
+			&ds.IsDefault, &ds.IsActive, &ds.HasConnectionString,
+			&ds.Description, &ds.CreatedAt, &ds.UpdatedAt,
+		)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "update data store failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, ds)
+	}
+}
+
+func AdminDeleteDataStore(cfg config.Config, db *pgxpool.Pool, dataSecrets secrets.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		var isDefault bool
+		var secretRef *string
+		err := db.QueryRow(r.Context(), `SELECT is_default, secret_ref FROM data_stores WHERE id = $1`, id).Scan(&isDefault, &secretRef)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, errorResponse{Error: "data store not found"})
+			return
+		}
+		if isDefault {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "cannot delete the default data store"})
+			return
+		}
+
+		_, err = db.Exec(r.Context(), `DELETE FROM data_stores WHERE id = $1 AND is_default = false`, id)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "delete data store failed"})
+			return
+		}
+		if dataSecrets != nil && secretRef != nil && strings.TrimSpace(*secretRef) != "" {
+			_ = dataSecrets.Delete(r.Context(), *secretRef)
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

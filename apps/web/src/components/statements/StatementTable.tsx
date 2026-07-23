@@ -108,7 +108,7 @@ export function StatementTable({
                 </div>
             </div>
 
-            <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
+            <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200">
                 <table className="min-w-full text-sm">
                     <thead className="bg-slate-50 text-slate-600">
                         <tr>
@@ -140,9 +140,9 @@ export function StatementTable({
                                 {columns.timestamp && (
                                     <td className="px-4 py-3 text-slate-600">{row.timestamp ?? row.storedAt ?? "-"}</td>
                                 )}
-                                {columns.actor && <td className="px-4 py-3 text-slate-700">{row.actorMbox ?? "-"}</td>}
-                                {columns.verb && <td className="px-4 py-3 text-slate-700">{row.verbId ?? "-"}</td>}
-                                {columns.object && <td className="px-4 py-3 text-slate-700">{row.objectId ?? "-"}</td>}
+                                {columns.actor && <td className="px-4 py-3 text-slate-700 max-w-[200px] truncate">{row.actorMbox ?? "-"}</td>}
+                                {columns.verb && <td className="px-4 py-3 text-slate-700 max-w-[200px] truncate">{row.verbId ?? "-"}</td>}
+                                {columns.object && <td className="px-4 py-3 text-slate-700 max-w-[200px] truncate">{row.objectId ?? "-"}</td>}
                                 {columns.id && (
                                     <td className="px-4 py-3 text-slate-500 font-mono text-xs">{row.id}</td>
                                 )}

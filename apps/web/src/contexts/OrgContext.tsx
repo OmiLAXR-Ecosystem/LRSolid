@@ -2,8 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { fetchOrgs } from "../api/org";
 import type { RestOrg } from "../types/org";
 import { useAuth } from "./AuthContext";
-
-export const ALL_ORGS = "_all";
+import { navigate } from "../lib/navigation";
 
 type OrgContextType = {
   orgs: RestOrg[];
@@ -14,15 +13,17 @@ type OrgContextType = {
 
 const OrgContext = createContext<OrgContextType | null>(null);
 
-function getOrgFromHash(): string {
-  const hash = window.location.hash.replace(/^#\/?/, "");
-  const [first] = hash.split("/");
+function getOrgFromPath(): string {
+  const cleaned = window.location.pathname.replace(/^\/+|\/+$/g, "");
+  if (!cleaned || cleaned === "profile") return "";
+  const [first] = cleaned.split("/");
   return first ?? "";
 }
 
-function getRouteFromHash(): string {
-  const hash = window.location.hash.replace(/^#\/?/, "");
-  const parts = hash.split("/");
+function getRouteFromPath(): string {
+  const cleaned = window.location.pathname.replace(/^\/+|\/+$/g, "");
+  if (!cleaned || cleaned === "profile") return "dashboard";
+  const parts = cleaned.split("/");
   return parts.slice(1).join("/") || "dashboard";
 }
 
@@ -44,18 +45,18 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         const items = res.items ?? [];
         setOrgs(items);
 
-        const orgFromHash = getOrgFromHash();
-        const isValid =
-          orgFromHash === ALL_ORGS ||
-          items.some((o) => o.slug === orgFromHash);
+        const orgFromPath = getOrgFromPath();
+        const isValid = items.some((o) => o.slug === orgFromPath);
 
-        if (orgFromHash && isValid) {
-          setCurrentOrg(orgFromHash);
+        if (orgFromPath && isValid) {
+          setCurrentOrg(orgFromPath);
         } else if (items.length > 0) {
           const first = items[0].slug;
           setCurrentOrg(first);
-          const route = getRouteFromHash();
-          window.location.hash = `#/${first}/${route}`;
+          if (window.location.pathname !== "/profile") {
+            const route = getRouteFromPath();
+            navigate(`/${first}/${route}${window.location.search}`, { replace: true });
+          }
         }
       })
       .catch(() => {})
@@ -64,8 +65,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const setOrg = useCallback((slug: string) => {
     setCurrentOrg(slug);
-    const route = slug === ALL_ORGS ? "organizations" : getRouteFromHash();
-    window.location.hash = `#/${slug}/${route}`;
+    if (window.location.pathname === "/profile") return;
+    const route = getRouteFromPath();
+    navigate(`/${slug}/${route}${window.location.search}`);
   }, []);
 
   return (

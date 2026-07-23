@@ -61,6 +61,9 @@ type Statement struct {
 // Providers MUST implement identical ordering and cursor behavior.
 type StatementFilter struct {
 	TenantID TenantID
+	// Optional app-level organisation boundary (UUID string).
+	// If set, providers should restrict statements to this organisation.
+	OrgID *string
 
 	ActorMBox    *string
 	ActorSHA256  *string // preferred for privacy-safe filters

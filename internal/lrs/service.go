@@ -11,12 +11,39 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
-type Service struct {
-	statements store.StatementStore
+type contextKey string
+
+const dataStoreIDKey contextKey = "lrs_data_store_id"
+
+// WithDataStoreID injects a data_store_id into the context so the Service
+// can route to the correct StatementStore. Called by the HTTP layer.
+func WithDataStoreID(ctx context.Context, dataStoreID string) context.Context {
+	return context.WithValue(ctx, dataStoreIDKey, dataStoreID)
 }
 
-func NewService(statements store.StatementStore) *Service {
-	return &Service{statements: statements}
+func dataStoreIDFromCtx(ctx context.Context) string {
+	if id, ok := ctx.Value(dataStoreIDKey).(string); ok {
+		return id
+	}
+	return ""
+}
+
+type Service struct {
+	registry  *store.Registry
+	fallback  store.StatementStore // used when no data_store_id in context (e.g. legacy/admin flows)
+}
+
+func NewService(registry *store.Registry, fallback store.StatementStore) *Service {
+	return &Service{registry: registry, fallback: fallback}
+}
+
+func (s *Service) statementsFor(ctx context.Context) store.StatementStore {
+	if id := dataStoreIDFromCtx(ctx); id != "" {
+		if bundle, err := s.registry.Get(id); err == nil {
+			return bundle.Statements
+		}
+	}
+	return s.fallback
 }
 
 func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, clientID *string, raw []json.RawMessage) ([]string, error) {
@@ -82,23 +109,22 @@ func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, c
 		ids = append(ids, id)
 	}
 
-	if err := s.statements.UpsertStatements(ctx, stmts); err != nil {
+	if err := s.statementsFor(ctx).UpsertStatements(ctx, stmts); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
 func (s *Service) QueryStatements(ctx context.Context, f store.StatementFilter) (store.StatementPage, error) {
-	// Clamp limit at API layer ideally; still safe-guard here:
 	if f.Limit <= 0 {
 		f.Limit = 50
 	}
 	if f.Limit > 1000 {
 		f.Limit = 1000
 	}
-	return s.statements.GetStatements(ctx, f)
+	return s.statementsFor(ctx).GetStatements(ctx, f)
 }
 
 func (s *Service) GetStatementByID(ctx context.Context, tenant store.TenantID, id store.StatementID) (store.Statement, error) {
-	return s.statements.GetStatementByID(ctx, tenant, id)
+	return s.statementsFor(ctx).GetStatementByID(ctx, tenant, id)
 }

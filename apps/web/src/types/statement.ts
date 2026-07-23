@@ -24,5 +24,21 @@ export type StatementDetail = {
     actorMbox?: string | null;
     verbId?: string | null;
     objectId?: string | null;
+    metadata: {
+        tenantId: string;
+        lrsId: string;
+        lrsName: string;
+        projectId: string;
+        projectSlug: string;
+        projectName: string;
+        organizationId: string;
+        organizationSlug: string;
+        organizationName: string;
+        dataStoreId: string;
+        dataStoreName: string;
+        dataStoreType: string;
+        clientId?: string | null;
+        clientName?: string | null;
+    };
     raw: unknown;
 };
