@@ -263,6 +263,22 @@ make xapi smoke            POST + GET a test xAPI statement
 
 ---
 
+## Research Software Metadata
+
+| File | Purpose |
+|------|---------|
+| [CITATION.cff](CITATION.cff) | Citation metadata for GitHub, Zotero, and related tooling |
+| [codemeta.json](codemeta.json) | FAIR research software metadata in CodeMeta JSON-LD format |
+| [CHANGELOG.md](CHANGELOG.md) | Release history and notable changes |
+| [AUTHORS.md](AUTHORS.md) | Maintainers, authors, and institutional cooperation |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development and contribution guidelines |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community conduct expectations |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting and supported versions |
+
+If you use LRSolid in research, teaching, or publications, please cite it using the metadata in [CITATION.cff](CITATION.cff).
+
+---
+
 ## License
 
 © 2026 Sergej Görzen. All rights reserved.

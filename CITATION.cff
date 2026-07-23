@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use LRSolid in research, teaching, or publications, please cite it using these metadata."
+type: software
+title: "LRSolid"
+version: "0.1.0"
+repository-code: "https://github.com/SGoerzen/LRSolid"
+url: "https://github.com/SGoerzen/LRSolid"
+license: "BUSL-1.1"
+abstract: "LRSolid is a self-hosted Learning Record Store compliant with xAPI 1.0.3, designed for university and enterprise environments with multi-tenancy, PostgreSQL-backed statement storage, and an extensible admin interface."
+keywords:
+  - xAPI
+  - Learning Record Store
+  - learning analytics
+  - research software
+  - self-hosted
+authors:
+  - family-names: "Görzen"
+    given-names: "Sergej"
