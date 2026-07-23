@@ -318,9 +318,9 @@ export function ExportFilterForm({ value, onChange, projects, lrsItems, clients,
                             options={[
                                 { label: "Local (no target)", value: "" },
                                 { label: "S3", value: "s3" },
-                                { label: "Google Drive", value: "gdrive" },
-                                { label: "OneDrive", value: "onedrive" },
-                                { label: "iCloud", value: "icloud" },
+                                { label: "Google Drive (not implemented)", value: "gdrive", disabled: true },
+                                { label: "OneDrive (not implemented)", value: "onedrive", disabled: true },
+                                { label: "iCloud (not implemented)", value: "icloud", disabled: true },
                             ]}
                         />
                     </div>

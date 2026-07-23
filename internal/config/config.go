@@ -46,7 +46,9 @@ type Config struct {
 	// Export defaults (org settings seed)
 	ExportDefaultTargetType string
 	ExportS3UploadBaseURL   string
-	ExportS3PublicBaseURL   string
+	ExportS3AccessKey       string
+	ExportS3SecretKey       string
+	ExportS3Region          string
 	ExportS3AuthToken       string
 	ExportS3PathPrefix      string
 }
@@ -74,7 +76,9 @@ func Load() (Config, error) {
 		PluginsDir:              getenv("PLUGINS_DIR", ""),
 		ExportDefaultTargetType: strings.ToLower(getenv("EXPORT_DEFAULT_TARGET_TYPE", "s3")),
 		ExportS3UploadBaseURL:   getenv("EXPORT_S3_UPLOAD_BASE_URL", ""),
-		ExportS3PublicBaseURL:   getenv("EXPORT_S3_PUBLIC_BASE_URL", ""),
+		ExportS3AccessKey:       getenv("EXPORT_S3_ACCESS_KEY", ""),
+		ExportS3SecretKey:       getenv("EXPORT_S3_SECRET_KEY", ""),
+		ExportS3Region:          getenv("EXPORT_S3_REGION", "us-east-1"),
 		ExportS3AuthToken:       getenv("EXPORT_S3_AUTH_TOKEN", ""),
 		ExportS3PathPrefix:      getenv("EXPORT_S3_PATH_PREFIX", "exports"),
 	}
@@ -106,7 +110,7 @@ func Load() (Config, error) {
 		c.JWTSecret = "dev-only-insecure-secret-change-me"
 	}
 	switch c.ExportDefaultTargetType {
-	case "local", "s3", "gdrive", "onedrive", "icloud":
+	case "local", "s3":
 	default:
 		c.ExportDefaultTargetType = "s3"
 	}

@@ -321,8 +321,7 @@ __s3_up:
 	@echo "Bucket:           $(DEV_S3_BUCKET)"
 	@echo "Access key:       $(DEV_S3_ACCESS_KEY)"
 	@echo "Secret key:       $(DEV_S3_SECRET_KEY)"
-	@echo "Export upload:    http://rustfs:9000/$(DEV_S3_BUCKET)"
-	@echo "Export public:    http://localhost:$(DEV_S3_PORT)/$(DEV_S3_BUCKET)"
+	@echo "Export upload:    http://rustfs:9000/$(DEV_S3_BUCKET) (private, API uses signed requests)"
 
 .PHONY: __s3_down
 __s3_down:

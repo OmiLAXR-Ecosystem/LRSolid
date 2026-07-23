@@ -117,7 +117,7 @@ export function StatementsView() {
                 format: "ndjson",
                 compression: "gzip",
                 statementWrapper: filters.statementWrapper,
-                targetType: (filters.targetType as "s3" | "gdrive" | "onedrive" | "icloud") || undefined,
+                targetType: (filters.targetType as "s3") || undefined,
                 targetPath: filters.targetPath || undefined,
             });
             setSuccessMessage(`Export created — ~${fmtBytes(job.estimatedBytes)} estimated`);
@@ -273,24 +273,13 @@ export function StatementsView() {
                                                 <td className="px-3 py-2 text-slate-500 text-xs">{fmtBytes(j.estimatedBytes)}</td>
                                                 <td className="px-3 py-2 text-slate-500 text-xs">{j.targetType ?? "local"}</td>
                                                 <td className="px-3 py-2">
-                                                    {j.artifactRef ? (
-                                                        <a
-                                                            href={j.artifactRef}
-                                                            target="_blank"
-                                                            rel="noreferrer"
-                                                            className="text-xs font-semibold text-teal-600 hover:text-teal-700"
-                                                        >
-                                                            Open
-                                                        </a>
-                                                    ) : (
-                                                        <button
-                                                            onClick={() => void handleDownloadJob(j.id)}
-                                                            disabled={downloadingJobId === j.id}
-                                                            className="text-xs font-semibold text-teal-600 hover:text-teal-700 disabled:opacity-50"
-                                                        >
-                                                            {downloadingJobId === j.id ? "..." : "Download"}
-                                                        </button>
-                                                    )}
+                                                    <button
+                                                        onClick={() => void handleDownloadJob(j.id)}
+                                                        disabled={downloadingJobId === j.id}
+                                                        className="text-xs font-semibold text-teal-600 hover:text-teal-700 disabled:opacity-50"
+                                                    >
+                                                        {downloadingJobId === j.id ? "..." : "Download"}
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}

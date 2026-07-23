@@ -1,9 +1,11 @@
 export type ExportSettings = {
   requireRemoteTargetAboveBytes: number;
   localMaxBytes: number;
-  defaultTargetType: "local" | "s3" | "gdrive" | "onedrive" | "icloud";
+  defaultTargetType: "local" | "s3";
   s3UploadBaseUrl?: string;
-  s3PublicBaseUrl?: string;
+  s3AccessKey?: string;
+  s3SecretKey?: string;
+  s3Region: string;
   s3AuthToken?: string;
   s3PathPrefix: string;
 };
@@ -79,7 +81,7 @@ export type CreateStatementExportPayload = {
   format?: "ndjson";
   compression?: "gzip" | "none";
   statementWrapper?: boolean;
-  targetType?: "s3" | "gdrive" | "onedrive" | "icloud";
+  targetType?: "s3";
   targetPath?: string;
 };
 

@@ -3,6 +3,8 @@ package httpapi
 import (
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,7 +26,9 @@ type exportSettingsResponse struct {
 	LocalMaxBytes                 int64  `json:"localMaxBytes"`
 	DefaultTargetType             string `json:"defaultTargetType"`
 	S3UploadBaseURL               string `json:"s3UploadBaseUrl,omitempty"`
-	S3PublicBaseURL               string `json:"s3PublicBaseUrl,omitempty"`
+	S3AccessKey                   string `json:"s3AccessKey,omitempty"`
+	S3SecretKey                   string `json:"s3SecretKey,omitempty"`
+	S3Region                      string `json:"s3Region"`
 	S3AuthToken                   string `json:"s3AuthToken,omitempty"`
 	S3PathPrefix                  string `json:"s3PathPrefix"`
 }
@@ -34,9 +38,37 @@ type updateExportSettingsRequest struct {
 	LocalMaxBytes                 *int64  `json:"localMaxBytes"`
 	DefaultTargetType             *string `json:"defaultTargetType"`
 	S3UploadBaseURL               *string `json:"s3UploadBaseUrl"`
-	S3PublicBaseURL               *string `json:"s3PublicBaseUrl"`
+	S3AccessKey                   *string `json:"s3AccessKey"`
+	S3SecretKey                   *string `json:"s3SecretKey"`
+	S3Region                      *string `json:"s3Region"`
 	S3AuthToken                   *string `json:"s3AuthToken"`
 	S3PathPrefix                  *string `json:"s3PathPrefix"`
+}
+
+// s3Credentials bundles the effective S3 connection settings for an org
+// (org-level overrides falling back to server config).
+type s3Credentials struct {
+	UploadBaseURL string
+	AccessKey     string
+	SecretKey     string
+	Region        string
+	AuthToken     string
+}
+
+func (c s3Credentials) signed() bool {
+	return c.AccessKey != "" && c.SecretKey != ""
+}
+
+// authorizeS3Request signs the request with SigV4 when access credentials are
+// configured; otherwise it falls back to a static bearer token if present.
+func (c s3Credentials) authorizeS3Request(req *http.Request, payloadSHA256 string) {
+	if c.signed() {
+		signS3Request(req, c.Region, c.AccessKey, c.SecretKey, payloadSHA256, time.Now())
+		return
+	}
+	if token := strings.TrimSpace(c.AuthToken); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 }
 
 type fieldConditionReq struct {
@@ -265,13 +297,15 @@ func ensureExportSettings(ctx context.Context, cfg config.Config, db *pgxpool.Po
 			org_id,
 			default_target_type,
 			s3_upload_base_url,
-			s3_public_base_url,
+			s3_access_key,
+			s3_secret_key,
+			s3_region,
 			s3_auth_token,
 			s3_path_prefix
 		)
-		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6)
+		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6, NULLIF($7, ''), $8)
 		ON CONFLICT (org_id) DO NOTHING
-	`, orgID, cfg.ExportDefaultTargetType, cfg.ExportS3UploadBaseURL, cfg.ExportS3PublicBaseURL, cfg.ExportS3AuthToken, cfg.ExportS3PathPrefix)
+	`, orgID, cfg.ExportDefaultTargetType, cfg.ExportS3UploadBaseURL, cfg.ExportS3AccessKey, cfg.ExportS3SecretKey, firstNonEmpty(cfg.ExportS3Region, "us-east-1"), cfg.ExportS3AuthToken, cfg.ExportS3PathPrefix)
 	return err
 }
 
@@ -305,7 +339,9 @@ func RestGetExportSettings(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 				local_max_bytes,
 				default_target_type,
 				COALESCE(s3_upload_base_url, ''),
-				COALESCE(s3_public_base_url, ''),
+				COALESCE(s3_access_key, ''),
+				COALESCE(s3_secret_key, ''),
+				s3_region,
 				COALESCE(s3_auth_token, ''),
 				s3_path_prefix
 			FROM org_export_settings
@@ -315,7 +351,9 @@ func RestGetExportSettings(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 			&out.LocalMaxBytes,
 			&out.DefaultTargetType,
 			&out.S3UploadBaseURL,
-			&out.S3PublicBaseURL,
+			&out.S3AccessKey,
+			&out.S3SecretKey,
+			&out.S3Region,
 			&out.S3AuthToken,
 			&out.S3PathPrefix,
 		); err != nil {
@@ -323,9 +361,14 @@ func RestGetExportSettings(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 			return
 		}
 		out.S3UploadBaseURL = firstNonEmpty(out.S3UploadBaseURL, strings.TrimSpace(cfg.ExportS3UploadBaseURL))
-		out.S3PublicBaseURL = firstNonEmpty(out.S3PublicBaseURL, strings.TrimSpace(cfg.ExportS3PublicBaseURL))
+		out.S3AccessKey = firstNonEmpty(out.S3AccessKey, strings.TrimSpace(cfg.ExportS3AccessKey))
+		out.S3SecretKey = firstNonEmpty(out.S3SecretKey, strings.TrimSpace(cfg.ExportS3SecretKey))
+		out.S3Region = firstNonEmpty(out.S3Region, strings.TrimSpace(cfg.ExportS3Region), "us-east-1")
 		out.S3AuthToken = firstNonEmpty(out.S3AuthToken, strings.TrimSpace(cfg.ExportS3AuthToken))
 		out.S3PathPrefix = firstNonEmpty(out.S3PathPrefix, strings.TrimSpace(cfg.ExportS3PathPrefix), "exports")
+		if !isAllowedDefaultTargetType(out.DefaultTargetType) {
+			out.DefaultTargetType = "s3"
+		}
 		writeJSON(w, http.StatusOK, out)
 	}
 }
@@ -384,7 +427,9 @@ func RestUpdateExportSettings(cfg config.Config, db *pgxpool.Pool) http.HandlerF
 			defaultTargetType = &normalized
 		}
 		s3UploadBaseURL := normalizeTrimmedPointer(req.S3UploadBaseURL)
-		s3PublicBaseURL := normalizeTrimmedPointer(req.S3PublicBaseURL)
+		s3AccessKey := normalizeTrimmedPointer(req.S3AccessKey)
+		s3SecretKey := normalizeTrimmedPointer(req.S3SecretKey)
+		s3Region := normalizeTrimmedPointer(req.S3Region)
 		s3AuthToken := normalizeTrimmedPointer(req.S3AuthToken)
 		s3PathPrefix := normalizeTrimmedPointer(req.S3PathPrefix)
 
@@ -395,15 +440,20 @@ func RestUpdateExportSettings(cfg config.Config, db *pgxpool.Pool) http.HandlerF
 				local_max_bytes = COALESCE($3, local_max_bytes),
 				default_target_type = COALESCE($4, default_target_type),
 				s3_upload_base_url = CASE WHEN $5::text IS NULL THEN s3_upload_base_url ELSE NULLIF($5, '') END,
-				s3_public_base_url = CASE WHEN $6::text IS NULL THEN s3_public_base_url ELSE NULLIF($6, '') END,
-				s3_auth_token = CASE WHEN $7::text IS NULL THEN s3_auth_token ELSE NULLIF($7, '') END,
+				s3_access_key = CASE WHEN $6::text IS NULL THEN s3_access_key ELSE NULLIF($6, '') END,
+				s3_secret_key = CASE WHEN $7::text IS NULL THEN s3_secret_key ELSE NULLIF($7, '') END,
+				s3_region = CASE
+					WHEN $8::text IS NULL THEN s3_region
+					ELSE COALESCE(NULLIF($8, ''), 'us-east-1')
+				END,
+				s3_auth_token = CASE WHEN $9::text IS NULL THEN s3_auth_token ELSE NULLIF($9, '') END,
 				s3_path_prefix = CASE
-					WHEN $8::text IS NULL THEN s3_path_prefix
-					ELSE COALESCE(NULLIF($8, ''), 'exports')
+					WHEN $10::text IS NULL THEN s3_path_prefix
+					ELSE COALESCE(NULLIF($10, ''), 'exports')
 				END,
 				updated_at = now()
 			WHERE org_id = $1
-		`, orgID, req.RequireRemoteTargetAboveBytes, req.LocalMaxBytes, defaultTargetType, s3UploadBaseURL, s3PublicBaseURL, s3AuthToken, s3PathPrefix); err != nil {
+		`, orgID, req.RequireRemoteTargetAboveBytes, req.LocalMaxBytes, defaultTargetType, s3UploadBaseURL, s3AccessKey, s3SecretKey, s3Region, s3AuthToken, s3PathPrefix); err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "update export settings failed"})
 			return
 		}
@@ -509,6 +559,9 @@ func RestCreateStatementExport(cfg config.Config, db *pgxpool.Pool) http.Handler
 		effectiveS3PathPrefix := firstNonEmpty(strings.TrimSpace(orgS3PathPrefix), strings.TrimSpace(cfg.ExportS3PathPrefix), "exports")
 		if targetType == nil {
 			dt := strings.ToLower(strings.TrimSpace(defaultTargetType))
+			if !isAllowedDefaultTargetType(dt) {
+				dt = "s3"
+			}
 			if dt != "" && dt != "local" {
 				targetType = &dt
 			}
@@ -766,11 +819,6 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 			return
 		}
 
-		// If completed with remote artifact: redirect
-		if job.Status == "completed" && job.ArtifactRef != nil && *job.ArtifactRef != "" {
-			http.Redirect(w, r, *job.ArtifactRef, http.StatusFound)
-			return
-		}
 		if job.TargetType != nil && len(targetRaw) > 0 {
 			var m map[string]any
 			_ = json.Unmarshal(targetRaw, &m)
@@ -778,15 +826,37 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 				job.TargetPath = &p
 			}
 		}
+		filename := "export-" + job.ID + ".ndjson.gz"
+
+		// Completed S3 exports are streamed from the (private) bucket through
+		// the API — the object is never exposed via a public URL.
+		if job.Status == "completed" && job.TargetType != nil && *job.TargetType == "s3" {
+			creds, err := loadOrgS3Credentials(ctx, cfg, db, orgID)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "read export settings failed"})
+				return
+			}
+			if creds.UploadBaseURL == "" || job.TargetPath == nil || strings.TrimSpace(*job.TargetPath) == "" {
+				writeJSON(w, http.StatusBadRequest, errorResponse{Error: "s3 target is not configured for this job"})
+				return
+			}
+			objectURL := buildRemoteObjectURL(creds.UploadBaseURL, *job.TargetPath)
+			if err := proxyS3Object(ctx, w, creds, objectURL, filename); err != nil {
+				writeJSON(w, http.StatusBadGateway, errorResponse{Error: err.Error()})
+			}
+			return
+		}
 
 		// Parse stored filters back into filter struct
 		wf := filtersToWhereFilter(orgID, filtersRaw)
 
 		where, args, argn := buildStatementWhere(wf)
 
-		// Mark job as running
+		// Mark job as running; clear any state left over from a failed attempt
 		if _, err := db.Exec(ctx, `
-			UPDATE export_jobs SET status = 'running', started_at = now() WHERE id = $1::uuid
+			UPDATE export_jobs
+			SET status = 'running', started_at = now(), finished_at = NULL, error_message = NULL
+			WHERE id = $1::uuid
 		`, job.ID); err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "failed to update job status"})
 			return
@@ -801,36 +871,25 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 			}
 			if artifactRef != nil {
 				_, _ = db.Exec(context.Background(), `
-					UPDATE export_jobs SET status = $2, finished_at = now(), artifact_ref = $3 WHERE id = $1::uuid
+					UPDATE export_jobs SET status = $2, finished_at = now(), error_message = NULL, artifact_ref = $3 WHERE id = $1::uuid
 				`, job.ID, status, *artifactRef)
 				return
 			}
 			{
 				_, _ = db.Exec(context.Background(), `
-					UPDATE export_jobs SET status = $2, finished_at = now() WHERE id = $1::uuid
+					UPDATE export_jobs SET status = $2, finished_at = now(), error_message = NULL WHERE id = $1::uuid
 				`, job.ID, status)
 			}
 		}
 
 		if job.TargetType != nil && *job.TargetType == "s3" {
-			var orgS3UploadBaseURL, orgS3PublicBaseURL, orgS3AuthToken string
-			if err := db.QueryRow(ctx, `
-				SELECT
-					COALESCE(s3_upload_base_url, ''),
-					COALESCE(s3_public_base_url, ''),
-					COALESCE(s3_auth_token, '')
-				FROM org_export_settings
-				WHERE org_id = $1
-			`, orgID).Scan(&orgS3UploadBaseURL, &orgS3PublicBaseURL, &orgS3AuthToken); err != nil {
+			creds, err := loadOrgS3Credentials(ctx, cfg, db, orgID)
+			if err != nil {
 				setJobStatus("failed", "failed to read s3 settings", nil)
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "read export settings failed"})
 				return
 			}
-			effectiveS3UploadBaseURL := firstNonEmpty(strings.TrimSpace(orgS3UploadBaseURL), strings.TrimSpace(cfg.ExportS3UploadBaseURL))
-			effectiveS3PublicBaseURL := firstNonEmpty(strings.TrimSpace(orgS3PublicBaseURL), strings.TrimSpace(cfg.ExportS3PublicBaseURL))
-			effectiveS3AuthToken := firstNonEmpty(strings.TrimSpace(orgS3AuthToken), strings.TrimSpace(cfg.ExportS3AuthToken))
-
-			if effectiveS3UploadBaseURL == "" {
+			if creds.UploadBaseURL == "" {
 				setJobStatus("failed", "EXPORT_S3_UPLOAD_BASE_URL is not configured", nil)
 				writeJSON(w, http.StatusBadRequest, errorResponse{Error: "s3 upload base URL is not configured"})
 				return
@@ -841,26 +900,19 @@ func RestDownloadExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc
 				return
 			}
 
-			artifactURL, err := uploadExportToS3(
-				ctx,
-				db,
-				wf,
-				effectiveS3UploadBaseURL,
-				effectiveS3PublicBaseURL,
-				effectiveS3AuthToken,
-				*job.TargetPath,
-			)
-			if err != nil {
+			objectURL := buildRemoteObjectURL(creds.UploadBaseURL, *job.TargetPath)
+			if err := uploadExportToS3(ctx, db, wf, creds, objectURL); err != nil {
 				setJobStatus("failed", err.Error(), nil)
 				writeJSON(w, http.StatusBadGateway, errorResponse{Error: "s3 upload failed"})
 				return
 			}
-			setJobStatus("completed", "", &artifactURL)
-			http.Redirect(w, r, artifactURL, http.StatusFound)
+			setJobStatus("completed", "", &objectURL)
+			if err := proxyS3Object(ctx, w, creds, objectURL, filename); err != nil {
+				writeJSON(w, http.StatusBadGateway, errorResponse{Error: err.Error()})
+			}
 			return
 		}
 
-		filename := "export-" + job.ID + ".ndjson.gz"
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 		w.WriteHeader(http.StatusOK)
@@ -935,7 +987,7 @@ func firstNonEmpty(values ...string) string {
 
 func isAllowedDefaultTargetType(v string) bool {
 	switch v {
-	case "local", "s3", "gdrive", "onedrive", "icloud":
+	case "local", "s3":
 		return true
 	default:
 		return false
@@ -944,7 +996,7 @@ func isAllowedDefaultTargetType(v string) bool {
 
 func isAllowedJobTargetType(v string) bool {
 	switch v {
-	case "s3", "gdrive", "onedrive", "icloud":
+	case "s3":
 		return true
 	default:
 		return false
@@ -1091,63 +1143,108 @@ func streamStatementsToWriter(ctx context.Context, db *pgxpool.Pool, where strin
 	}
 }
 
+// loadOrgS3Credentials returns the effective S3 connection settings for an
+// org, falling back to the server-level config for unset fields.
+func loadOrgS3Credentials(ctx context.Context, cfg config.Config, db *pgxpool.Pool, orgID string) (s3Credentials, error) {
+	var uploadBaseURL, accessKey, secretKey, region, authToken string
+	if err := db.QueryRow(ctx, `
+		SELECT
+			COALESCE(s3_upload_base_url, ''),
+			COALESCE(s3_access_key, ''),
+			COALESCE(s3_secret_key, ''),
+			s3_region,
+			COALESCE(s3_auth_token, '')
+		FROM org_export_settings
+		WHERE org_id = $1
+	`, orgID).Scan(&uploadBaseURL, &accessKey, &secretKey, &region, &authToken); err != nil {
+		return s3Credentials{}, err
+	}
+	return s3Credentials{
+		UploadBaseURL: firstNonEmpty(strings.TrimSpace(uploadBaseURL), strings.TrimSpace(cfg.ExportS3UploadBaseURL)),
+		AccessKey:     firstNonEmpty(strings.TrimSpace(accessKey), strings.TrimSpace(cfg.ExportS3AccessKey)),
+		SecretKey:     firstNonEmpty(strings.TrimSpace(secretKey), strings.TrimSpace(cfg.ExportS3SecretKey)),
+		Region:        firstNonEmpty(strings.TrimSpace(region), strings.TrimSpace(cfg.ExportS3Region), "us-east-1"),
+		AuthToken:     firstNonEmpty(strings.TrimSpace(authToken), strings.TrimSpace(cfg.ExportS3AuthToken)),
+	}, nil
+}
+
+// proxyS3Object streams an object from the private bucket to the client using
+// an authenticated GET. Nothing in the bucket needs to be publicly readable.
+func proxyS3Object(ctx context.Context, w http.ResponseWriter, creds s3Credentials, objectURL, filename string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, objectURL, nil)
+	if err != nil {
+		return fmt.Errorf("create s3 download request failed: %w", err)
+	}
+	creds.authorizeS3Request(req, emptyPayloadSHA256)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("s3 download request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("s3 download failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	if resp.ContentLength >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, resp.Body)
+	return nil
+}
+
 func uploadExportToS3(
 	ctx context.Context,
 	db *pgxpool.Pool,
 	wf statementWhereFilter,
-	uploadBaseURL string,
-	publicBaseURL string,
-	authToken string,
-	targetPath string,
-) (string, error) {
+	creds s3Credentials,
+	objectURL string,
+) error {
 	where, args, argn := buildStatementWhere(wf)
-	uploadURL := buildRemoteObjectURL(uploadBaseURL, targetPath)
-	artifactURL := uploadURL
-	if strings.TrimSpace(publicBaseURL) != "" {
-		artifactURL = buildRemoteObjectURL(publicBaseURL, targetPath)
-	}
 
 	tmp, err := os.CreateTemp("", "lrsolid-export-*.ndjson.gz")
 	if err != nil {
-		return "", fmt.Errorf("create export temp file failed: %w", err)
+		return fmt.Errorf("create export temp file failed: %w", err)
 	}
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
 
-	gz := gzip.NewWriter(tmp)
+	// SigV4 needs the SHA-256 of the payload, so hash while writing.
+	payloadHash := sha256.New()
+	gz := gzip.NewWriter(io.MultiWriter(tmp, payloadHash))
 	streamErr := streamStatementsToWriter(ctx, db, where, args, argn, wf.StatementWrapper, gz)
 	if err := gz.Close(); err != nil && streamErr == "" {
 		streamErr = "compress failed: " + err.Error()
 	}
 	if streamErr != "" {
-		return "", fmt.Errorf("%s", streamErr)
+		return fmt.Errorf("%s", streamErr)
 	}
 
 	info, err := tmp.Stat()
 	if err != nil {
-		return "", fmt.Errorf("stat export temp file failed: %w", err)
+		return fmt.Errorf("stat export temp file failed: %w", err)
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return "", fmt.Errorf("rewind export temp file failed: %w", err)
+		return fmt.Errorf("rewind export temp file failed: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, uploadURL, tmp)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, objectURL, tmp)
 	if err != nil {
-		return "", fmt.Errorf("create s3 upload request failed: %w", err)
+		return fmt.Errorf("create s3 upload request failed: %w", err)
 	}
 	req.ContentLength = info.Size()
 	req.Header.Set("Content-Type", "application/gzip")
-	if token := strings.TrimSpace(authToken); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
+	creds.authorizeS3Request(req, hex.EncodeToString(payloadHash.Sum(nil)))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("s3 upload request failed: %w", err)
+		return fmt.Errorf("s3 upload request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return "", fmt.Errorf("s3 upload failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("s3 upload failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return artifactURL, nil
+	return nil
 }

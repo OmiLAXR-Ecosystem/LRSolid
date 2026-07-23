@@ -54,7 +54,9 @@ export function SettingsView() {
   const [localMaxGB, setLocalMaxGB] = useState("2");
   const [defaultTargetType, setDefaultTargetType] = useState<ExportSettings["defaultTargetType"]>("s3");
   const [s3UploadBaseUrl, setS3UploadBaseUrl] = useState("");
-  const [s3PublicBaseUrl, setS3PublicBaseUrl] = useState("");
+  const [s3AccessKey, setS3AccessKey] = useState("");
+  const [s3SecretKey, setS3SecretKey] = useState("");
+  const [s3Region, setS3Region] = useState("us-east-1");
   const [s3AuthToken, setS3AuthToken] = useState("");
   const [s3PathPrefix, setS3PathPrefix] = useState("exports");
 
@@ -95,9 +97,11 @@ export function SettingsView() {
       .then((s) => {
         setRemoteThresholdGB(toGB(s.requireRemoteTargetAboveBytes));
         setLocalMaxGB(toGB(s.localMaxBytes));
-        setDefaultTargetType(s.defaultTargetType ?? "s3");
+        setDefaultTargetType(s.defaultTargetType === "local" ? "local" : "s3");
         setS3UploadBaseUrl(s.s3UploadBaseUrl ?? "");
-        setS3PublicBaseUrl(s.s3PublicBaseUrl ?? "");
+        setS3AccessKey(s.s3AccessKey ?? "");
+        setS3SecretKey(s.s3SecretKey ?? "");
+        setS3Region(s.s3Region ?? "us-east-1");
         setS3AuthToken(s.s3AuthToken ?? "");
         setS3PathPrefix(s.s3PathPrefix ?? "exports");
       })
@@ -131,7 +135,9 @@ export function SettingsView() {
         localMaxBytes,
         defaultTargetType,
         s3UploadBaseUrl,
-        s3PublicBaseUrl,
+        s3AccessKey,
+        s3SecretKey,
+        s3Region,
         s3AuthToken,
         s3PathPrefix,
       });
@@ -247,21 +253,35 @@ export function SettingsView() {
               >
                 <option value="local">Local</option>
                 <option value="s3">S3</option>
-                <option value="gdrive">Google Drive</option>
-                <option value="onedrive">OneDrive</option>
-                <option value="icloud">iCloud</option>
+                <option value="gdrive" disabled>
+                  Google Drive (not implemented)
+                </option>
+                <option value="onedrive" disabled>
+                  OneDrive (not implemented)
+                </option>
+                <option value="icloud" disabled>
+                  iCloud (not implemented)
+                </option>
               </select>
             </div>
             <div className="space-y-1 md:col-span-2">
               <FieldLabel>S3 Upload Base URL</FieldLabel>
-              <TextInput value={s3UploadBaseUrl} onChange={setS3UploadBaseUrl} placeholder="https://s3.example.com/upload" />
+              <TextInput value={s3UploadBaseUrl} onChange={setS3UploadBaseUrl} placeholder="https://s3.example.com/bucket" />
             </div>
-            <div className="space-y-1 md:col-span-2">
-              <FieldLabel>S3 Public Base URL (optional)</FieldLabel>
-              <TextInput value={s3PublicBaseUrl} onChange={setS3PublicBaseUrl} placeholder="https://cdn.example.com/exports" />
+            <div className="space-y-1">
+              <FieldLabel>S3 Access Key</FieldLabel>
+              <TextInput value={s3AccessKey} onChange={setS3AccessKey} placeholder="AKIA..." />
             </div>
-            <div className="space-y-1 md:col-span-2">
-              <FieldLabel>S3 Auth Token (optional)</FieldLabel>
+            <div className="space-y-1">
+              <FieldLabel>S3 Secret Key</FieldLabel>
+              <TextInput value={s3SecretKey} onChange={setS3SecretKey} placeholder="Secret access key" />
+            </div>
+            <div className="space-y-1">
+              <FieldLabel>S3 Region</FieldLabel>
+              <TextInput value={s3Region} onChange={setS3Region} placeholder="us-east-1" />
+            </div>
+            <div className="space-y-1">
+              <FieldLabel>S3 Auth Token (optional, non-AWS endpoints)</FieldLabel>
               <TextInput value={s3AuthToken} onChange={setS3AuthToken} placeholder="Bearer token (without prefix)" />
             </div>
             <div className="space-y-1 md:col-span-2">
