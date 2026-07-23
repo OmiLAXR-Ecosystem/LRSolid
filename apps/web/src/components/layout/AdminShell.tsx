@@ -221,6 +221,16 @@ export function AdminShell({
                                 Sergej Görzen
                             </a>
                             . All rights reserved.
+                            <span className="mx-1.5" aria-hidden="true">·</span>
+                            In cooperation with the{" "}
+                            <a
+                                href="https://elearn.rwth-aachen.de"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="hover:text-slate-600 hover:underline"
+                            >
+                                Learning Technologies Research Group @ RWTH Aachen University
+                            </a>
                         </footer>
                     </main>
                 </div>

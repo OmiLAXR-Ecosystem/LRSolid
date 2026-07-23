@@ -29,6 +29,11 @@ endif
 DEV_POSTGRES_PORT ?= 5433
 DEV_API_PORT ?= 8081
 DEV_WEB_PORT ?= 5174
+DEV_S3_PORT ?= 9000
+DEV_S3_CONSOLE_PORT ?= 9001
+DEV_S3_ACCESS_KEY ?= rustfsadmin
+DEV_S3_SECRET_KEY ?= rustfsadmin
+DEV_S3_BUCKET ?= lrsolid
 DEV_PG_DSN ?= postgres://lrsolid:lrsolid@localhost:$(DEV_POSTGRES_PORT)/lrsolid?sslmode=disable
 PG_DSN ?= $(DEV_PG_DSN)
 
@@ -67,6 +72,9 @@ PG_DSN ?= $(DEV_PG_DSN)
 # HELP: migrate up | Run DB migrations up
 # HELP: pg down | Stop/remove local Postgres container
 # HELP: pg up | Start local Postgres (docker)
+# HELP: s3 down | Stop/remove local S3-compatible RustFS container
+# HELP: s3 logs | Tail local S3-compatible RustFS logs
+# HELP: s3 up | Start local S3-compatible RustFS
 # HELP: test | Run unit tests (Go + Web if configured)
 # HELP: test api | Run Go tests only
 # HELP: test web | Run Web tests only (if configured)
@@ -88,12 +96,14 @@ help: ## Show available targets
 		printf "  Web         http://localhost:%s  (DEV_WEB_PORT)\n" "$(DEV_WEB_PORT)"; \
 		printf "  API         http://localhost:%s  (DEV_API_PORT)\n" "$(DEV_API_PORT)"; \
 		printf "  PostgreSQL  localhost:%s         (DEV_POSTGRES_PORT)\n" "$(DEV_POSTGRES_PORT)"; \
+		printf "  S3 API      http://localhost:%s  (DEV_S3_PORT)\n" "$(DEV_S3_PORT)"; \
+		printf "  S3 Console  http://localhost:%s  (DEV_S3_CONSOLE_PORT)\n" "$(DEV_S3_CONSOLE_PORT)"; \
 		printf "\nOverride example:\n"; \
 		printf "  DEV_POSTGRES_PORT=55432 DEV_API_PORT=18080 DEV_WEB_PORT=15173 make dev\n\n"; \
 	}
 
 COMMAND_GOALS := $(strip $(MAKECMDGOALS))
-COMMAND_WORDS := admin api build clean create deps dev detached docker down fmt get help lint logs migrate pg post psql push restart smoke test tidy up user volumes web xapi
+COMMAND_WORDS := admin api build clean create deps dev detached docker down fmt get help lint logs migrate pg post psql push restart s3 smoke test tidy up user volumes web xapi
 
 .PHONY: $(COMMAND_WORDS) __dispatch
 $(filter-out help,$(COMMAND_WORDS)): __dispatch
@@ -131,6 +141,9 @@ __dispatch:
 		"migrate up") $(MAKE) --no-print-directory __migrate_up ;; \
 		"pg down") $(MAKE) --no-print-directory __pg_down ;; \
 		"pg up") $(MAKE) --no-print-directory __pg_up ;; \
+		"s3 down") $(MAKE) --no-print-directory __s3_down ;; \
+		"s3 logs") $(MAKE) --no-print-directory __s3_logs ;; \
+		"s3 up") $(MAKE) --no-print-directory __s3_up ;; \
 		"test") $(MAKE) --no-print-directory __test ;; \
 		"test api") $(MAKE) --no-print-directory __test_api ;; \
 		"test web") $(MAKE) --no-print-directory __test_web ;; \
@@ -298,6 +311,27 @@ __dev_psql:
 .PHONY: __dev_restart_api
 __dev_restart_api:
 	@$(DEV_COMPOSE) restart api
+
+.PHONY: __s3_up
+__s3_up:
+	@$(DEV_COMPOSE) up -d --remove-orphans rustfs
+	@$(DEV_COMPOSE) run --rm rustfs-init
+	@echo "Local S3 API:     http://localhost:$(DEV_S3_PORT)"
+	@echo "Local S3 Console: http://localhost:$(DEV_S3_CONSOLE_PORT)"
+	@echo "Bucket:           $(DEV_S3_BUCKET)"
+	@echo "Access key:       $(DEV_S3_ACCESS_KEY)"
+	@echo "Secret key:       $(DEV_S3_SECRET_KEY)"
+	@echo "Export upload:    http://rustfs:9000/$(DEV_S3_BUCKET)"
+	@echo "Export public:    http://localhost:$(DEV_S3_PORT)/$(DEV_S3_BUCKET)"
+
+.PHONY: __s3_down
+__s3_down:
+	@$(DEV_COMPOSE) stop rustfs || true
+	@$(DEV_COMPOSE) rm -f -s rustfs || true
+
+.PHONY: __s3_logs
+__s3_logs:
+	@$(DEV_COMPOSE) logs -f --tail=200 rustfs
 
 # -----------------------
 # Clean

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -1106,46 +1107,44 @@ func uploadExportToS3(
 		artifactURL = buildRemoteObjectURL(publicBaseURL, targetPath)
 	}
 
-	pr, pw := io.Pipe()
-	streamDone := make(chan string, 1)
-	go func() {
-		gz := gzip.NewWriter(pw)
-		streamErr := streamStatementsToWriter(ctx, db, where, args, argn, wf.StatementWrapper, gz)
-		if err := gz.Close(); err != nil && streamErr == "" {
-			streamErr = "compress failed: " + err.Error()
-		}
-		if streamErr != "" {
-			_ = pw.CloseWithError(fmt.Errorf("%s", streamErr))
-		} else {
-			_ = pw.Close()
-		}
-		streamDone <- streamErr
-	}()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, uploadURL, pr)
+	tmp, err := os.CreateTemp("", "lrsolid-export-*.ndjson.gz")
 	if err != nil {
-		_ = pr.Close()
+		return "", fmt.Errorf("create export temp file failed: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+
+	gz := gzip.NewWriter(tmp)
+	streamErr := streamStatementsToWriter(ctx, db, where, args, argn, wf.StatementWrapper, gz)
+	if err := gz.Close(); err != nil && streamErr == "" {
+		streamErr = "compress failed: " + err.Error()
+	}
+	if streamErr != "" {
+		return "", fmt.Errorf("%s", streamErr)
+	}
+
+	info, err := tmp.Stat()
+	if err != nil {
+		return "", fmt.Errorf("stat export temp file failed: %w", err)
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("rewind export temp file failed: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, uploadURL, tmp)
+	if err != nil {
 		return "", fmt.Errorf("create s3 upload request failed: %w", err)
 	}
+	req.ContentLength = info.Size()
 	req.Header.Set("Content-Type", "application/gzip")
 	if token := strings.TrimSpace(authToken); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		_ = pr.Close()
-		streamErr := <-streamDone
-		if streamErr != "" {
-			return "", fmt.Errorf("%s", streamErr)
-		}
 		return "", fmt.Errorf("s3 upload request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	streamErr := <-streamDone
-
-	if streamErr != "" {
-		return "", fmt.Errorf("%s", streamErr)
-	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return "", fmt.Errorf("s3 upload failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))

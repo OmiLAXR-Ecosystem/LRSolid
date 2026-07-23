@@ -47,8 +47,67 @@ services:
     ports: ["${DEV_WEB_PORT:-5174}:5173"]
     depends_on: [api]
 
+  rustfs:
+    image: rustfs/rustfs:latest
+    command: >
+      --address :9000
+      --console-address :9001
+      --console-enable
+      --access-key ${DEV_S3_ACCESS_KEY:-rustfsadmin}
+      --secret-key ${DEV_S3_SECRET_KEY:-rustfsadmin}
+      /data
+    profiles: ["s3"]
+    environment:
+      RUSTFS_ACCESS_KEY: "${DEV_S3_ACCESS_KEY:-rustfsadmin}"
+      RUSTFS_SECRET_KEY: "${DEV_S3_SECRET_KEY:-rustfsadmin}"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "${DEV_S3_PORT:-9000}:9000"
+      - "${DEV_S3_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - rustfs_dev_data:/data
+      - rustfs_dev_logs:/logs
+
+  rustfs-init:
+    image: amazon/aws-cli:latest
+    profiles: ["s3"]
+    depends_on:
+      rustfs:
+        condition: service_started
+    environment:
+      AWS_ACCESS_KEY_ID: "${DEV_S3_ACCESS_KEY:-rustfsadmin}"
+      AWS_SECRET_ACCESS_KEY: "${DEV_S3_SECRET_KEY:-rustfsadmin}"
+      AWS_DEFAULT_REGION: "us-east-1"
+      DEV_S3_BUCKET: "${DEV_S3_BUCKET:-lrsolid}"
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -eu
+        until aws --endpoint-url http://rustfs:9000 s3api list-buckets >/dev/null 2>&1; do
+          sleep 1
+        done
+        aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$$DEV_S3_BUCKET" >/dev/null 2>&1 || true
+        cat > /tmp/anonymous-policy.json <<EOF
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "AWS": ["*"] },
+              "Action": ["s3:GetObject", "s3:PutObject"],
+              "Resource": ["arn:aws:s3:::$$DEV_S3_BUCKET/*"]
+            }
+          ]
+        }
+        EOF
+        aws --endpoint-url http://rustfs:9000 s3api put-bucket-policy --bucket "$$DEV_S3_BUCKET" --policy file:///tmp/anonymous-policy.json
+        aws --endpoint-url http://rustfs:9000 s3api get-bucket-policy --bucket "$$DEV_S3_BUCKET"
+
 volumes:
   postgres_dev_data:
   go_cache:
   air_tmp:
   web_node_modules:
+  rustfs_dev_data:
+  rustfs_dev_logs:
