@@ -281,4 +281,8 @@ If you use LRSolid in research, teaching, or publications, please cite it using 
 
 ## License
 
-© 2026 Sergej Görzen. All rights reserved.
+LRSolid is licensed under the [Apache License 2.0](LICENSE).
+
+Copyright 2026 Sergej Görzen.
+
+If you fork, extend, redistribute, or publish derived work based on LRSolid, retain the attribution notices in [NOTICE](NOTICE) and mention the original project and author.

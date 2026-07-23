@@ -6,7 +6,7 @@
   "description": "LRSolid is a self-hosted Learning Record Store compliant with xAPI 1.0.3, designed for university and enterprise environments with multi-tenancy, PostgreSQL-backed statement storage, and an extensible admin interface.",
   "codeRepository": "https://github.com/SGoerzen/LRSolid",
   "issueTracker": "https://github.com/SGoerzen/LRSolid/issues",
-  "license": "https://spdx.org/licenses/BUSL-1.1",
+  "license": "https://spdx.org/licenses/Apache-2.0",
   "programmingLanguage": [
     "Go",
     "TypeScript",

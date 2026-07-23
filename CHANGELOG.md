@@ -13,6 +13,7 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ### Changed
 
+- Project license changed from BUSL-1.1 to Apache-2.0 with attribution preserved through `NOTICE`.
 - Web package version set to `0.1.0`.
 
 ## [0.1.0] - 2026-07-23
