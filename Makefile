@@ -368,7 +368,7 @@ __admin_create:
 		--email "$(EMAIL)" \
 		--password "$(PASSWORD)" \
 		--org "$(or $(ORG),default)" \
-		--role "$(or $(ROLE),owner)"
+		--role "$(ROLE)"
 
 .PHONY: __user_create
 __user_create:
