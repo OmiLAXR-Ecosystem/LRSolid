@@ -211,7 +211,16 @@ export function AdminShell({
                             {children}
                         </div>
                         <footer className="shrink-0 pb-1 text-center text-xs text-slate-400">
-                            © 2026 Sergej Görzen. All rights reserved.
+                            © 2026{" "}
+                            <a
+                                href="https://goerzen.consulting"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="hover:text-slate-600 hover:underline"
+                            >
+                                Sergej Görzen
+                            </a>
+                            . All rights reserved.
                         </footer>
                     </main>
                 </div>
