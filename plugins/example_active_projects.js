@@ -23,10 +23,12 @@ function fetchData(orgID, config) {
     var days = (config && config.days) ? config.days : 30;
 
     var rows = db.query(
-        `SELECT COUNT(DISTINCT lrs_id)::int AS value
-         FROM statements
-         WHERE organisation_id = $1
-           AND stored >= NOW() - ($2 || ' days')::interval`,
+        `SELECT COUNT(DISTINCT p.id)::int AS value
+         FROM statements st
+         JOIN lrs l ON l.id = st.tenant_id
+         JOIN projects p ON p.id = l.project_id
+         WHERE p.org_id = $1
+           AND st.stored_at >= NOW() - ($2 || ' days')::interval`,
         orgID,
         String(days)
     );
