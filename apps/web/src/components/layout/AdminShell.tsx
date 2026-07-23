@@ -9,6 +9,7 @@ import Logo from "../../assets/LRSolid_Logo.png";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOrg } from "../../contexts/OrgContext";
 import { navigate } from "../../lib/navigation";
+import { APP_VERSION } from "../../version";
 
 export type NavKey =
     | "dashboard"
@@ -210,27 +211,32 @@ export function AdminShell({
                         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                             {children}
                         </div>
-                        <footer className="shrink-0 pb-1 text-center text-xs text-slate-400">
-                            © 2026{" "}
-                            <a
-                                href="https://goerzen.consulting"
-                                target="_blank"
-                                rel="noreferrer"
-                                className="hover:text-slate-600 hover:underline"
-                            >
-                                Sergej Görzen
-                            </a>
-                            . All rights reserved.
-                            <span className="mx-1.5" aria-hidden="true">·</span>
-                            In cooperation with the{" "}
-                            <a
-                                href="https://elearn.rwth-aachen.de"
-                                target="_blank"
-                                rel="noreferrer"
-                                className="hover:text-slate-600 hover:underline"
-                            >
-                                Learning Technologies Research Group @ RWTH Aachen University
-                            </a>
+                        <footer className="shrink-0 space-y-0.5 pb-1 text-center text-xs text-slate-400">
+                            <div>
+                                © 2026{" "}
+                                <a
+                                    href="https://goerzen.consulting"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="hover:text-slate-600 hover:underline"
+                                >
+                                    Sergej Görzen
+                                </a>
+                                . All rights reserved.
+                                <span className="mx-1.5" aria-hidden="true">·</span>
+                                v{APP_VERSION} (Beta)
+                            </div>
+                            <div>
+                                In cooperation with the{" "}
+                                <a
+                                    href="https://elearn.rwth-aachen.de"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="hover:text-slate-600 hover:underline"
+                                >
+                                    Learning Technologies Research Group @ RWTH Aachen University
+                                </a>
+                            </div>
                         </footer>
                     </main>
                 </div>
