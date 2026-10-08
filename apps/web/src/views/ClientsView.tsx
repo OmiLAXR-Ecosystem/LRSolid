@@ -509,14 +509,19 @@ export function ClientsView() {
                     {usersLoading && <div className="px-3 py-2 text-sm text-slate-500">Loading users...</div>}
                     {!usersLoading && users.length === 0 && <div className="px-3 py-2 text-sm text-slate-500">No users found.</div>}
                     {!usersLoading && users.map((user) => (
-                      <label key={user.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50">
+                      <label key={user.id} className="flex min-w-0 items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50">
                         <input
                           type="checkbox"
+                          className="shrink-0"
                           checked={selectedUserSet.has(user.id)}
                           onChange={() => toggleUser(user.id)}
                         />
-                        <span className="text-slate-700">{user.displayName || user.email}</span>
-                        <span className="text-xs text-slate-500">{user.email}</span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-slate-700">{user.displayName || user.email}</span>
+                          {user.displayName && user.displayName !== user.email && (
+                            <span className="block truncate text-xs text-slate-500">{user.email}</span>
+                          )}
+                        </span>
                       </label>
                     ))}
                   </div>
