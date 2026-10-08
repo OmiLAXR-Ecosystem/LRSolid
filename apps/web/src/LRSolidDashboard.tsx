@@ -6,7 +6,13 @@ import { useOrg } from "./contexts/OrgContext";
 import { getWidgets } from "./plugins/registry";
 import { registerBuiltinWidgets } from "./plugins/builtin";
 import { DashboardConfigModal } from "./components/dashboard/DashboardConfigModal";
-import type { WidgetEntry } from "./plugins/types";
+import type { WidgetEntry, WidgetPlugin } from "./plugins/types";
+
+function responsiveColSpan(colSpan: WidgetPlugin["colSpan"]): string {
+  if (colSpan === "col-span-4") return "col-span-1 md:col-span-2 xl:col-span-4";
+  if (colSpan === "col-span-2") return "col-span-1 md:col-span-2";
+  return "col-span-1";
+}
 
 registerBuiltinWidgets();
 
@@ -81,15 +87,15 @@ export function LRSolidDashboard() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}
-        <div className="ml-auto">
+        <div className="w-full sm:ml-auto sm:w-auto">
           <button
             type="button"
             onClick={() => setConfigOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 sm:w-auto sm:justify-start"
           >
             <Settings className="h-4 w-4" />
             Dashboard konfigurieren
@@ -98,7 +104,7 @@ export function LRSolidDashboard() {
       </div>
 
       {kpiEntries.length > 0 && (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {kpiEntries.map((entry) => {
             const plugin = pluginMap[entry.id];
             if (!plugin) return null;
@@ -115,12 +121,12 @@ export function LRSolidDashboard() {
       )}
 
       {wideEntries.length > 0 && (
-        <div className="grid grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 xl:gap-6">
           {wideEntries.map((entry) => {
             const plugin = pluginMap[entry.id];
             if (!plugin) return null;
             return (
-              <div key={entry.id} className={plugin.colSpan}>
+              <div key={entry.id} className={responsiveColSpan(plugin.colSpan)}>
                 <plugin.component
                   data={widgetData[entry.id]}
                   config={entry.config ?? {}}

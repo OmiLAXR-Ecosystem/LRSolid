@@ -87,14 +87,14 @@ export function ProjectsView() {
   return (
     <div className="space-y-6">
       <Card>
-        <div className="flex items-end gap-4">
-          <div className="flex-1">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1">
             <FieldLabel>Search</FieldLabel>
             <TextInput value={query} onChange={setQuery} placeholder="Name, slug, description..." />
           </div>
           <button
             onClick={() => { resetForm(); setCreateOpen(true); }}
-            className="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 transition"
+            className="h-10 w-full rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white transition hover:bg-teal-700 sm:w-auto"
           >
             New Project
           </button>
@@ -103,7 +103,7 @@ export function ProjectsView() {
 
       <Card>
         {error && <div className="mb-3 text-sm text-red-600">Error: {error}</div>}
-        <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
+        <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>

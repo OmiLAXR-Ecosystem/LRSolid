@@ -27,8 +27,8 @@ function ConfigFieldInput({ field, value, onChange }: {
 }) {
   if (field.type === "int") {
     return (
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-slate-600 w-32 shrink-0">{field.label}</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="w-full text-xs text-slate-600 sm:w-32 sm:shrink-0">{field.label}</label>
         <input
           type="number"
           min={field.min}
@@ -45,8 +45,8 @@ function ConfigFieldInput({ field, value, onChange }: {
   }
   if (field.type === "select") {
     return (
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-slate-600 w-32 shrink-0">{field.label}</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="w-full text-xs text-slate-600 sm:w-32 sm:shrink-0">{field.label}</label>
         <select
           value={value as string}
           onChange={(e) => onChange(e.target.value)}
@@ -144,8 +144,8 @@ export function DashboardConfigModal({ open, onClose, plugins, entries, onSave, 
       title="Dashboard konfigurieren"
       maxWidth="max-w-2xl"
       footer={
-        <div className="flex w-full items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-slate-500">Speichern für:</span>
             <select
               value={scope}
@@ -156,7 +156,7 @@ export function DashboardConfigModal({ open, onClose, plugins, entries, onSave, 
               <option value="org">Gesamte Organisation</option>
             </select>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => void handleReset()}

@@ -50,7 +50,7 @@ export const RecentStatementsWidget: WidgetPlugin<Statement[]> = {
         <div className="space-y-4">
           {rows.length === 0 && <div className="text-sm text-slate-500">No statements yet.</div>}
           {rows.map((row) => (
-            <div key={row.id} className="flex items-center justify-between text-sm rounded-lg px-2 py-1">
+            <div key={row.id} className="flex flex-col gap-1 rounded-lg px-2 py-1 text-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="font-semibold text-slate-800 truncate">
                   {(row.clientName ?? row.lrsName ?? "Client")}: {shortActor(row.actorName, row.actorMbox)} {shortVerb(row.verbId)} {shortObject(row.objectId)}
@@ -60,7 +60,7 @@ export const RecentStatementsWidget: WidgetPlugin<Statement[]> = {
                   {row.clientName ? ` • ${row.clientName}` : ""}
                 </div>
               </div>
-              <div className="ml-4 shrink-0 text-slate-500">{relativeTime(row.storedAt)}</div>
+              <div className="shrink-0 text-slate-500 sm:ml-4">{relativeTime(row.storedAt)}</div>
             </div>
           ))}
           <div className="text-right">

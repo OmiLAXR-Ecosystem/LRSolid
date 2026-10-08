@@ -15,7 +15,7 @@ export const CoverageWidget: WidgetPlugin<CoverageItem[]> = {
     const pieData = items.map((i) => ({ name: i.name, value: i.pct }));
     return (
       <Card title="Coverage">
-        <div className="grid grid-cols-[240px_1fr] gap-6 items-center">
+        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(160px,220px)_minmax(0,1fr)] sm:gap-6">
           <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>

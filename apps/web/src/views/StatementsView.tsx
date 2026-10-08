@@ -245,7 +245,7 @@ export function StatementsView() {
                         {jobsLoading && jobs.length === 0 && <div className="text-sm text-slate-400">Loading...</div>}
                         {!jobsLoading && jobs.length === 0 && <div className="text-sm text-slate-400">No exports yet.</div>}
                         {jobs.length > 0 && (
-                            <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
+                            <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200">
                                 <table className="min-w-full text-sm">
                                     <thead className="bg-slate-50 text-slate-500">
                                         <tr>

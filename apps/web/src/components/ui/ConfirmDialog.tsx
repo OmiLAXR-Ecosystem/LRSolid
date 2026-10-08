@@ -34,13 +34,13 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[90vw] max-w-md rounded-2xl bg-white shadow-lg ring-1 ring-slate-200">
-        <div className="px-6 pt-6 pb-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-lg ring-1 ring-slate-200">
+        <div className="px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
           <div className="text-base font-semibold text-slate-800">{title}</div>
           <div className="mt-2 text-sm text-slate-500">{message}</div>
         </div>
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <button
             onClick={onCancel}
             className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"

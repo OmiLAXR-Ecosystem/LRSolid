@@ -94,7 +94,7 @@ export function PluginsView() {
         <pre className="rounded-lg bg-slate-900 text-slate-100 text-xs p-4 overflow-x-auto leading-relaxed">{EXAMPLE}</pre>
         <div className="mt-4 space-y-2 text-sm text-slate-600">
           <p className="font-semibold text-slate-700">Verfügbare Host-APIs:</p>
-          <div className="rounded-lg border border-slate-200 overflow-hidden text-xs font-mono">
+          <div className="overflow-x-auto rounded-lg border border-slate-200 text-xs font-mono">
             <div className="flex border-b border-slate-100 bg-slate-50">
               <span className="px-3 py-2 w-64 font-semibold text-slate-700">API</span>
               <span className="px-3 py-2 text-slate-500">Beschreibung</span>

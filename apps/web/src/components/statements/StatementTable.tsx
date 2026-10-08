@@ -67,11 +67,11 @@ export function StatementTable({
 
     return (
         <Card>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-slate-500">
                     {error ? <span className="text-red-600">Error: {error}</span> : `Showing ${items.length} entries`}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <button
                         onClick={onRefresh}
                         disabled={loading}

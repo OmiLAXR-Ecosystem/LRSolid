@@ -22,8 +22,8 @@ type UserFiltersProps = {
 export function UserFilters({ name, email, role, onNameChange, onEmailChange, onRoleChange, onAddUser }: UserFiltersProps) {
     return (
         <Card>
-            <div className="flex items-end justify-between gap-6">
-                <div className="grid grid-cols-[1fr_1fr_0.8fr] gap-4 flex-1">
+            <div className="flex flex-col items-stretch gap-4 lg:flex-row lg:items-end">
+                <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <div>
                         <FieldLabel>Name:</FieldLabel>
                         <TextInput value={name} onChange={onNameChange} placeholder="Name..." />
@@ -40,7 +40,7 @@ export function UserFilters({ name, email, role, onNameChange, onEmailChange, on
                 {onAddUser && (
                     <button
                         onClick={onAddUser}
-                        className="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 transition"
+                        className="h-10 w-full rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white transition hover:bg-teal-700 lg:w-auto"
                     >
                         Add User
                     </button>

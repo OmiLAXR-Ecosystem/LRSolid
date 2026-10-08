@@ -88,12 +88,12 @@ function CreatedCredentials({ created }: { created: CreateClientResponse }) {
 
   return (
     <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm space-y-4">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="font-semibold text-base text-green-900">Client key created</div>
           <p className="text-green-700 mt-0.5">Copy the secret now — it will not be shown again.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button
             onClick={downloadCredentials}
             className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition"
@@ -323,8 +323,8 @@ export function ClientsView() {
   return (
     <div className="space-y-6">
       <Card>
-        <div className="flex items-end justify-between gap-6">
-          <div className="flex-1 max-w-md">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0 flex-1 sm:max-w-md">
             <FieldLabel>Search</FieldLabel>
             <TextInput
               value={query}
@@ -334,7 +334,7 @@ export function ClientsView() {
           </div>
           <button
             onClick={openCreateDialog}
-            className="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 transition"
+            className="h-10 w-full rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white transition hover:bg-teal-700 sm:w-auto"
           >
             New Client Key
           </button>
@@ -343,7 +343,7 @@ export function ClientsView() {
 
       <Card>
         {error && <div className="mb-3 text-sm text-red-600">Error: {error}</div>}
-        <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
+        <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
@@ -445,7 +445,7 @@ export function ClientsView() {
             <CreatedCredentials created={created} />
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <FieldLabel>Learning Record Store</FieldLabel>
                   <SelectInput value={lrsId} onChange={setLrsId} options={lrsOptions} />
@@ -466,7 +466,7 @@ export function ClientsView() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <FieldLabel>Expires At (optional)</FieldLabel>
                   <input

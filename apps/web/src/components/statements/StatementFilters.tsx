@@ -14,7 +14,7 @@ type StatementFiltersProps = {
 export function StatementFilters({ filters, onChange, onApply, loading }: StatementFiltersProps) {
     return (
         <Card>
-            <div className="grid grid-cols-[1.1fr_1.1fr_1.1fr_1fr_1fr_1fr_auto] gap-4 items-end">
+            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7">
                 <div>
                     <FieldLabel>Statement ID:</FieldLabel>
                     <TextInput
@@ -72,7 +72,7 @@ export function StatementFilters({ filters, onChange, onApply, loading }: Statem
                 <button
                     onClick={onApply}
                     disabled={loading}
-                    className="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 transition disabled:opacity-60"
+                    className="h-10 w-full rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-60 sm:w-auto"
                 >
                     {loading ? "Loading..." : "Apply Filters"}
                 </button>

@@ -74,15 +74,15 @@ function TextConditionRow({ label, condition, placeholder, onEnable, onDisable, 
                 </label>
             </div>
             {condition !== null && (
-                <div className="flex gap-2 pl-5">
-                    <div className="w-36 shrink-0">
+                <div className="flex flex-col gap-2 pl-5 sm:flex-row">
+                    <div className="w-full sm:w-36 sm:shrink-0">
                         <SelectInput
                             value={condition.operator}
                             onChange={(op) => onChange({ ...condition, operator: op as TextOperator })}
                             options={TEXT_OPERATORS}
                         />
                     </div>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                         <TextInput
                             value={condition.value}
                             onChange={(v) => onChange({ ...condition, value: v })}
@@ -272,15 +272,15 @@ export function ExportFilterForm({ value, onChange, projects, lrsItems, clients,
                 )}
                 <div className="space-y-2">
                     {value.extensions.map((ext, i) => (
-                        <div key={i} className="flex gap-2 items-start">
-                            <div className="flex-1 min-w-0">
+                        <div key={i} className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-start">
+                            <div className="min-w-0 flex-1">
                                 <TextInput
                                     value={ext.key}
                                     onChange={(v) => updateExtension(i, { ...ext, key: v })}
                                     placeholder="Extension key IRI"
                                 />
                             </div>
-                            <div className="w-36 shrink-0">
+                            <div className="w-full sm:w-36 sm:shrink-0">
                                 <SelectInput
                                     value={ext.operator}
                                     onChange={(v) => updateExtension(i, { ...ext, operator: v as ExtensionOperator })}

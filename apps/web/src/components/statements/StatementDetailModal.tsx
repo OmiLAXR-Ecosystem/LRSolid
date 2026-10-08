@@ -176,8 +176,8 @@ export function StatementDetailModal({
 
     const footer = (
         <>
-            <div className="text-xs text-slate-500">{detail?.id ?? ""}</div>
-            <div className="flex items-center gap-2">
+            <div className="min-w-0 break-all text-xs text-slate-500">{detail?.id ?? ""}</div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <button
                     onClick={onClose}
                     className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
@@ -232,7 +232,7 @@ export function StatementDetailModal({
                         {metadataOpen && (
                             <div className="mb-4 grid grid-cols-1 gap-1 rounded-lg border border-slate-200 bg-white p-3">
                                 {metadataRows.map((row) => (
-                                    <div key={row.label} className="grid grid-cols-[140px_minmax(0,1fr)] gap-2 text-xs">
+                                    <div key={row.label} className="grid grid-cols-1 gap-0.5 text-xs sm:grid-cols-[140px_minmax(0,1fr)] sm:gap-2">
                                         <div className="font-semibold text-slate-500">{row.label}</div>
                                         <div className="break-all font-mono text-slate-700">{row.value}</div>
                                     </div>

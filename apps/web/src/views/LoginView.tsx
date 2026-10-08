@@ -67,7 +67,7 @@ export function LoginView() {
                 </div>
 
                 {/* Card */}
-                <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 p-8">
+                <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-8">
                     <h1 className="text-xl font-semibold text-slate-800 mb-1">Sign in</h1>
                     <p className="text-sm text-slate-500 mb-6">to your LRSolid workspace</p>
 

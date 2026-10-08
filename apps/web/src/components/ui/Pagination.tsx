@@ -25,9 +25,9 @@ export function Pagination({
     totalPages,
 }: PaginationProps) {
     return (
-        <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
-            <div>{label}</div>
-            <div className="flex items-center gap-2">
+        <div className="mt-4 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">{label}</div>
+            <div className="flex flex-wrap items-center gap-2">
                 <label className="text-xs font-semibold text-slate-500">Limit</label>
                 <select
                     value={limit}

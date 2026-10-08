@@ -44,7 +44,7 @@ export function UserTable({
     return (
         <Card>
             {error && <div className="mb-3 text-sm text-red-600">Error: {error}</div>}
-            <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
+            <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200">
                 <table className="min-w-full text-sm">
                     <thead className="bg-slate-50 text-slate-600">
                         <tr>
