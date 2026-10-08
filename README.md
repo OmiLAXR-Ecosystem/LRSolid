@@ -107,13 +107,21 @@ git clone https://github.com/SGoerzen/LRSolid.git
 cd LRSolid
 ```
 
-### 2. Start the development stack
+### 2. Set up the local environment
+
+```bash
+make install
+```
+
+This checks for Go, pnpm, and Docker, creates `.env` from `.env.example` when that file is missing, installs Go and web dependencies, starts the development Postgres, and applies migrations. An existing `.env` is left unchanged.
+
+### 3. Start the development stack
 
 ```bash
 make dev
 ```
 
-This starts PostgreSQL on port `5433`, the Go API with live reload at `http://localhost:8081`, and the Vite development server at `http://localhost:5174`. Press Ctrl+C to stop the stack.
+This starts PostgreSQL on port `5433`, the Go API with live reload at `http://localhost:8081`, and the Vite development server at `http://localhost:5174`. When the stack is up, `make dev` prints those URLs and returns. Postgres from `make install` is reused. Follow logs with `make dev logs`, and stop the stack with `make down`.
 
 If any port is already occupied, override it when starting the stack:
 
@@ -121,19 +129,14 @@ If any port is already occupied, override it when starting the stack:
 DEV_POSTGRES_PORT=55432 DEV_API_PORT=18080 DEV_WEB_PORT=15173 make dev
 ```
 
-To run the API and web app directly on the host instead, install the dependencies and start each server in a separate terminal:
+To run the API and web app directly on the host instead, start each server in a separate terminal after `make install`:
 
 ```bash
-cp .env.example .env
-# Edit .env and set PG_DSN and JWT_SECRET.
-make deps
-make pg up
-make migrate up
 make dev api   # Go API on :8080
 make dev web   # Vite dev server on :5173
 ```
 
-### 3. Create the first user
+### 4. Create the first user
 
 With the development stack running, create a user in another terminal:
 
@@ -235,6 +238,7 @@ make migrate down  # Roll back one migration
 ## Makefile Targets
 
 ```
+make install               First-time setup (.env, dependencies, Postgres, migrations)
 make deps                  Install Go + pnpm dependencies
 make dev api               Run Go API locally
 make dev web               Run Vite dev server

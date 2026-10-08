@@ -85,4 +85,13 @@
     html.dark .text-teal-700 {
         color: rgb(94 234 212) !important;
     }
+
+    /* Logo asset is white; paint it black on light surfaces. */
+    .brand-logo {
+        filter: brightness(0);
+    }
+
+    html.dark .brand-logo {
+        filter: none;
+    }
 }

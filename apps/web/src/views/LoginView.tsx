@@ -58,13 +58,11 @@ export function LoginView() {
     return (
         <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
             <div className="w-full max-w-sm">
-                {/* Logo — invert to black for light background */}
                 <div className="mb-8 flex justify-center">
                     <img
                         src={Logo}
                         alt="LRSolid"
-                        className="h-16 w-auto"
-                        style={{ filter: "brightness(0)" }}
+                        className="brand-logo h-16 w-auto"
                     />
                 </div>
 
@@ -157,9 +155,18 @@ export function LoginView() {
                         rel="noreferrer"
                         className="hover:text-slate-600 hover:underline"
                     >
-                        Sergej Görzen
+                        Dr.-Ing. Sergej Görzen
                     </a>
                     . All rights reserved.
+                    <span className="mx-1.5" aria-hidden="true">·</span>
+                    <a
+                        href="https://github.com/SGoerzen"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:text-slate-600 hover:underline"
+                    >
+                        GitHub
+                    </a>
                 </p>
             </div>
         </div>

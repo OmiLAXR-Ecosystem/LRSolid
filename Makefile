@@ -16,6 +16,8 @@ GO ?= go
 PNPM ?= pnpm
 DOCKER ?= docker
 COMPOSE ?= docker compose
+# Last air release that still builds with Go 1.25. v1.67.2+ requires Go 1.26.
+AIR_VERSION ?= v1.67.1
 
 # --- Env loading (optional) ---
 # Loads variables from .env if present (exported to recipes)
@@ -65,6 +67,7 @@ PG_DSN ?= $(DEV_PG_DSN)
 # HELP: down volumes | Stop both stacks and remove their volumes
 # HELP: fmt | Format Go + Web
 # HELP: help | Show available commands
+# HELP: install | Set up local dev (.env, dependencies, Postgres, migrations)
 # HELP: lint | Lint Go + Web (if configured)
 # HELP: logs | Tail all service logs (production)
 # HELP: logs api | Tail API logs (production)
@@ -103,7 +106,7 @@ help: ## Show available targets
 	}
 
 COMMAND_GOALS := $(strip $(MAKECMDGOALS))
-COMMAND_WORDS := admin api build clean create deps dev detached docker down fmt get help lint logs migrate pg post psql push restart s3 smoke test tidy up user volumes web xapi
+COMMAND_WORDS := admin api build clean create deps dev detached docker down fmt get help install lint logs migrate pg post psql push restart s3 smoke test tidy up user volumes web xapi
 
 .PHONY: $(COMMAND_WORDS) __dispatch
 $(filter-out help,$(COMMAND_WORDS)): __dispatch
@@ -118,6 +121,7 @@ __dispatch:
 		"build web") $(MAKE) --no-print-directory __build_web ;; \
 		"clean") $(MAKE) --no-print-directory __clean ;; \
 		"deps") $(MAKE) --no-print-directory __deps ;; \
+		"install") $(MAKE) --no-print-directory __install ;; \
 		"dev") $(MAKE) --no-print-directory __dev ;; \
 		"dev api") $(MAKE) --no-print-directory __dev_api ;; \
 		"dev build") $(MAKE) --no-print-directory __dev_build ;; \
@@ -170,6 +174,45 @@ __deps:
 .PHONY: __tidy
 __tidy:
 	@cd $(API_DIR) && $(GO) mod tidy
+
+.PHONY: __install
+__install:
+	@echo "==> Checking tools"
+	@command -v "$(GO)" >/dev/null || { echo "Go is required (see go.mod)."; exit 1; }
+	@command -v "$(PNPM)" >/dev/null || { echo "pnpm is required (9+). Install with: corepack enable && corepack prepare pnpm@latest --activate"; exit 1; }
+	@command -v "$(DOCKER)" >/dev/null || { echo "Docker is required."; exit 1; }
+	@$(DOCKER) info >/dev/null 2>&1 || { echo "Docker is installed but the daemon is not running."; exit 1; }
+	@$(COMPOSE) version >/dev/null 2>&1 || { echo "Docker Compose is required (docker compose)."; exit 1; }
+	@if [[ ! -f "$(ROOT)/.env" ]]; then \
+		cp "$(ROOT)/.env.example" "$(ROOT)/.env"; \
+		echo "==> Created .env from .env.example"; \
+	else \
+		echo "==> Keeping existing .env"; \
+	fi
+	@$(MAKE) --no-print-directory __deps
+	@if [[ ! -x "$(AIR)" ]]; then \
+		echo "==> Installing air"; \
+		$(GO) install github.com/air-verse/air@$(AIR_VERSION); \
+	fi
+	@echo "==> Starting Postgres"
+	@$(DEV_COMPOSE) up -d postgres
+	@echo "==> Waiting for Postgres"
+	@ready=0; \
+	for _ in {1..30}; do \
+		if $(DEV_COMPOSE) exec -T postgres pg_isready -U lrsolid >/dev/null 2>&1; then \
+			ready=1; \
+			break; \
+		fi; \
+		sleep 1; \
+	done; \
+	[[ "$$ready" -eq 1 ]] || { echo "Postgres did not become ready."; exit 1; }
+	@$(MAKE) --no-print-directory __migrate_up
+	@echo ""
+	@echo "LRSolid is ready."
+	@echo "  Full stack:  make dev"
+	@echo "  API on host: make dev api    http://localhost:8080"
+	@echo "  Web on host: make dev web    http://localhost:5173"
+	@echo "  First user:  make user create EMAIL=you@example.com PASSWORD=secret ROLE=owner"
 
 # -----------------------
 # Formatting / Linting
@@ -231,7 +274,7 @@ AIR ?= $(shell go env GOPATH)/bin/air
 
 .PHONY: __dev_api
 __dev_api:
-	@test -x "$(AIR)" || (echo "air not found — install with: go install github.com/air-verse/air@latest" && exit 1)
+	@test -x "$(AIR)" || (echo "air not found — install with: go install github.com/air-verse/air@$(AIR_VERSION)" && exit 1)
 	@cd $(ROOT) && PG_DSN="$(PG_DSN)" $(AIR)
 
 .PHONY: __dev_web
@@ -280,13 +323,21 @@ __docker_push:
 # -----------------------
 DEV_COMPOSE := $(COMPOSE) -f docker-compose.dev.yml
 
+.PHONY: __dev_urls
+__dev_urls:
+	@echo ""
+	@echo "Web  http://localhost:$(DEV_WEB_PORT)"
+	@echo "API  http://localhost:$(DEV_API_PORT)"
+
 .PHONY: __dev_up
 __dev_up:
-	@$(DEV_COMPOSE) up
+	@$(DEV_COMPOSE) up -d --wait
+	@$(MAKE) --no-print-directory __dev_urls
 
 .PHONY: __dev_up_detached
 __dev_up_detached:
-	@$(DEV_COMPOSE) up -d
+	@$(DEV_COMPOSE) up -d --wait
+	@$(MAKE) --no-print-directory __dev_urls
 
 .PHONY: __dev_logs
 __dev_logs:

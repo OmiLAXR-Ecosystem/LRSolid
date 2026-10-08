@@ -1,6 +1,6 @@
 FROM golang:1.25-alpine
 WORKDIR /src
-# Install air for live reload
-RUN go install github.com/air-verse/air@latest
+# Install air for live reload. v1.67.2+ requires Go 1.26.
+RUN go install github.com/air-verse/air@v1.67.1
 EXPOSE 8080
 CMD ["air", "-c", ".air.toml"]

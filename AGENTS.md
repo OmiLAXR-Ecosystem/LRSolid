@@ -17,6 +17,7 @@ All common tasks go through the root `Makefile` (`make help` lists everything).
 
 ```bash
 make deps          # go mod download + pnpm install
+make install         # first-time setup: .env, deps, Postgres, migrations
 make dev             # start development stack with live reload
 make up              # start production stack
 make down            # stop development and production stacks

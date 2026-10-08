@@ -220,9 +220,18 @@ export function AdminShell({
                                     rel="noreferrer"
                                     className="hover:text-slate-600 hover:underline"
                                 >
-                                    Sergej Görzen
+                                    Dr.-Ing. Sergej Görzen
                                 </a>
                                 . All rights reserved.
+                                <span className="mx-1.5" aria-hidden="true">·</span>
+                                <a
+                                    href="https://github.com/SGoerzen"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="hover:text-slate-600 hover:underline"
+                                >
+                                    GitHub
+                                </a>
                                 <span className="mx-1.5" aria-hidden="true">·</span>
                                 v{APP_VERSION} (Beta)
                             </div>

@@ -14,12 +14,14 @@ Prerequisites:
 Common commands:
 
 ```bash
-make deps
+make install
 make dev
 make test
 make lint
 make fmt
 ```
+
+`make install` is the first-time setup: it creates `.env` when missing, installs dependencies, starts Postgres, and applies migrations.
 
 Run focused tests when changing one area:
 
