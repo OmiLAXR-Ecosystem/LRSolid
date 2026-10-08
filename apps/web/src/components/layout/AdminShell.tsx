@@ -291,44 +291,46 @@ export function AdminShell({
                             </div>
                         </div>
                         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
-                            {children}
+                            <div className="flex min-h-full flex-col">
+                                <div className="flex-1">{children}</div>
+                                <footer className="mt-3 space-y-0.5 px-1 pb-1 text-center text-[11px] leading-relaxed text-slate-400 sm:mt-6 sm:text-xs">
+                                    <div>
+                                        © 2026{" "}
+                                        <a
+                                            href="https://goerzen.consulting"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="hover:text-slate-600 hover:underline"
+                                        >
+                                            Dr.-Ing. Sergej Görzen
+                                        </a>
+                                        . All rights reserved.
+                                        <span className="mx-1.5" aria-hidden="true">·</span>
+                                        <a
+                                            href="https://github.com/SGoerzen"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="hover:text-slate-600 hover:underline"
+                                        >
+                                            GitHub
+                                        </a>
+                                        <span className="mx-1.5" aria-hidden="true">·</span>
+                                        v{APP_VERSION} (Beta)
+                                    </div>
+                                    <div>
+                                        In cooperation with the{" "}
+                                        <a
+                                            href="https://elearn.rwth-aachen.de"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="hover:text-slate-600 hover:underline"
+                                        >
+                                            Learning Technologies Research Group @ RWTH Aachen University
+                                        </a>
+                                    </div>
+                                </footer>
+                            </div>
                         </div>
-                        <footer className="shrink-0 space-y-0.5 px-1 pb-1 text-center text-[11px] leading-relaxed text-slate-400 sm:text-xs">
-                            <div>
-                                © 2026{" "}
-                                <a
-                                    href="https://goerzen.consulting"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="hover:text-slate-600 hover:underline"
-                                >
-                                    Dr.-Ing. Sergej Görzen
-                                </a>
-                                . All rights reserved.
-                                <span className="mx-1.5" aria-hidden="true">·</span>
-                                <a
-                                    href="https://github.com/SGoerzen"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="hover:text-slate-600 hover:underline"
-                                >
-                                    GitHub
-                                </a>
-                                <span className="mx-1.5" aria-hidden="true">·</span>
-                                v{APP_VERSION} (Beta)
-                            </div>
-                            <div>
-                                In cooperation with the{" "}
-                                <a
-                                    href="https://elearn.rwth-aachen.de"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="hover:text-slate-600 hover:underline"
-                                >
-                                    Learning Technologies Research Group @ RWTH Aachen University
-                                </a>
-                            </div>
-                        </footer>
                     </main>
                 </div>
             </div>
