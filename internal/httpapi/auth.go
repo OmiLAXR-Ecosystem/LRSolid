@@ -20,9 +20,11 @@ type loginRequest struct {
 }
 
 type authMeResponse struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	ID           string  `json:"id"`
+	Email        string  `json:"email"`
+	Role         string  `json:"role"`
+	AuthProvider *string `json:"authProvider,omitempty"`
+	SSOOnly      bool    `json:"ssoOnly,omitempty"`
 }
 
 // Login handles POST /api/auth/login.
@@ -37,9 +39,16 @@ func Login(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 
 		ctx := r.Context()
 
+		var localEnabled bool
+		err := db.QueryRow(ctx, `SELECT local_login_enabled FROM organisations WHERE slug = $1`, cfg.DefaultOrg).Scan(&localEnabled)
+		if err == nil && !localEnabled {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: "local login disabled"})
+			return
+		}
+
 		var userID, email, role string
 		var passwordHash *string
-		err := db.QueryRow(ctx, `
+		err = db.QueryRow(ctx, `
 			SELECT u.id, u.email, om.role, u.password_hash
 			FROM users u
 			JOIN org_memberships om ON om.user_id = u.id
@@ -86,18 +95,34 @@ func Logout() http.HandlerFunc {
 
 // Me handles GET /api/auth/me.
 // Returns the current user from the validated JWT claims (set by auth.Middleware).
-func Me() http.HandlerFunc {
+func Me(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := auth.ClaimsFromContext(r.Context())
 		if !ok {
 			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
 			return
 		}
-		writeJSON(w, http.StatusOK, authMeResponse{
-			ID:    claims.UserID,
-			Email: claims.Email,
-			Role:  claims.Role,
-		})
+		resp := authMeResponse{ID: claims.UserID, Email: claims.Email, Role: claims.Role}
+		var provider *string
+		var ssoOnly bool
+		err := db.QueryRow(r.Context(), `
+			SELECT u.password_hash IS NULL,
+			       (
+			         SELECT p.display_name
+			         FROM user_identities ui
+			         JOIN auth_providers p ON p.id = ui.provider_id
+			         WHERE ui.user_id = u.id
+			         ORDER BY ui.last_login_at DESC NULLS LAST
+			         LIMIT 1
+			       )
+			FROM users u
+			WHERE u.id = $1::uuid
+		`, claims.UserID).Scan(&ssoOnly, &provider)
+		if err == nil {
+			resp.AuthProvider = provider
+			resp.SSOOnly = ssoOnly
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 

@@ -25,11 +25,12 @@ import (
 )
 
 type restUser struct {
-	ID          string  `json:"id"`
-	DisplayName *string `json:"displayName,omitempty"`
-	Email       string  `json:"email"`
-	Role        string  `json:"role"`
-	DisabledAt  *string `json:"disabledAt,omitempty"`
+	ID           string  `json:"id"`
+	DisplayName  *string `json:"displayName,omitempty"`
+	Email        string  `json:"email"`
+	Role         string  `json:"role"`
+	DisabledAt   *string `json:"disabledAt,omitempty"`
+	AuthProvider *string `json:"authProvider,omitempty"`
 }
 
 type restListResponse struct {
@@ -308,7 +309,15 @@ func RestListUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 
 		args = append(args, limit, offset)
 		listQ := `
-			SELECT u.id, u.display_name, u.email, om.role, u.disabled_at
+			SELECT u.id, u.display_name, u.email, om.role, u.disabled_at,
+			       (
+			         SELECT p.display_name
+			         FROM user_identities ui
+			         JOIN auth_providers p ON p.id = ui.provider_id
+			         WHERE ui.user_id = u.id
+			         ORDER BY ui.last_login_at DESC NULLS LAST
+			         LIMIT 1
+			       )
 			FROM users u
 			JOIN org_memberships om ON om.user_id = u.id
 			WHERE ` + where + `
@@ -326,7 +335,7 @@ func RestListUsers(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		for rows.Next() {
 			var u restUser
 			var disabledAt *string
-			if err := rows.Scan(&u.ID, &u.DisplayName, &u.Email, &u.Role, &disabledAt); err != nil {
+			if err := rows.Scan(&u.ID, &u.DisplayName, &u.Email, &u.Role, &disabledAt, &u.AuthProvider); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "scan users failed"})
 				return
 			}

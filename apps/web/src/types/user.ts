@@ -4,6 +4,7 @@ export type RestUser = {
     email: string;
     role: string;
     disabledAt?: string | null;
+    authProvider?: string | null;
 };
 
 export type RestUserResponse = {

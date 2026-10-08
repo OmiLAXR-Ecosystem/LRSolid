@@ -23,6 +23,14 @@ services:
       PG_DSN: "postgres://lrsolid:lrsolid@postgres:5432/lrsolid?sslmode=disable"
       JWT_SECRET: "dev-only-insecure-secret-change-me"
       DEFAULT_ORG: "default"
+      APP_URL: "http://localhost:${DEV_WEB_PORT:-5174}"
+      DATA_STORE_SECRET_KEY: "${DATA_STORE_SECRET_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
+      OIDC_ENABLED: "${OIDC_ENABLED:-false}"
+      OIDC_ISSUER: "${OIDC_ISSUER:-}"
+      OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:-}"
+      OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:-}"
+      SAML_ENABLED: "${SAML_ENABLED:-false}"
+      SAML_IDP_METADATA_URL: "${SAML_IDP_METADATA_URL:-}"
       PLUGINS_DIR: "/plugins"
       EXPORT_S3_UPLOAD_BASE_URL: "http://rustfs:9000/${DEV_S3_BUCKET:-lrsolid}"
       EXPORT_S3_ACCESS_KEY: "${DEV_S3_ACCESS_KEY:-rustfsadmin}"
@@ -107,6 +115,22 @@ services:
         # API using signed requests, never via anonymous access.
         aws --endpoint-url http://rustfs:9000 s3api delete-bucket-policy --bucket "$$DEV_S3_BUCKET" >/dev/null 2>&1 || true
         echo "bucket $$DEV_S3_BUCKET ready (private)"
+
+  dex:
+    image: dexidp/dex:v2.43.0
+    profiles: ["sso"]
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    ports: ["5556:5556"]
+    volumes:
+      - ./infra/dex/config.yaml:/etc/dex/config.yaml:ro
+
+  saml-idp:
+    image: kristophjunge/test-saml-idp:1.15
+    profiles: ["sso"]
+    ports: ["8085:8080"]
+    environment:
+      SIMPLESAMLPHP_SP_ENTITY_ID: "http://localhost:${DEV_WEB_PORT:-5174}/api/auth/saml/shibboleth/metadata"
+      SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: "http://localhost:${DEV_WEB_PORT:-5174}/api/auth/saml/shibboleth/acs"
 
 volumes:
   postgres_dev_data:

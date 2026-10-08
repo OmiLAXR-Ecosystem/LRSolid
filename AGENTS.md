@@ -57,7 +57,7 @@ In addition to user roles, **Clients** (`internal/models.Client`) are machine cr
 
 ### Two auth mechanisms, two route groups
 
-- `/api/*` — human users, session-cookie auth (JWT in `lrsolid_session` httpOnly cookie), enforced by `auth.Middleware` (`internal/auth/middleware.go`).
+- `/api/*` — human users, session-cookie auth (JWT in `lrsolid_session` httpOnly cookie), enforced by `auth.Middleware` (`internal/auth/middleware.go`). Password login is `POST /api/auth/login`. OpenID Connect and SAML 2.0 (Shibboleth) logins live in `internal/sso` and issue the same cookie; see `docs/adr-0005.md`.
 - `/xapi/*` — xAPI clients, HTTP Basic auth (`key_id:secret`) enforced by `XAPIClientAuth` (`internal/httpapi/xapi_auth.go`); also accepts session cookies for dev/UI convenience.
 
 Routing is centralized in `internal/httpapi/router.go` — start there to see the full endpoint surface before adding routes.
@@ -102,7 +102,7 @@ views/      thin containers — just wire a hook to feature components
 
 ### Migrations
 
-`migrations/` uses `golang-migrate`, numbered sequentially (currently up to `000014`). Each has a paired `.up.sql`/`.down.sql`. Always add new migrations at the next number — never edit an already-applied migration in place.
+`migrations/` uses `golang-migrate`, numbered sequentially (currently up to `000028`). Each has a paired `.up.sql`/`.down.sql`. Always add new migrations at the next number — never edit an already-applied migration in place.
 
 ### `packages/`
 

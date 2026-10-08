@@ -33,6 +33,13 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 	r.Route("/api/auth", func(r chi.Router) {
 		r.Post("/login", Login(cfg, db))
 		r.Post("/logout", Logout())
+		r.Get("/providers", ListLoginProviders(cfg, db))
+		r.Get("/invite", GetInvite(db))
+		r.Post("/invite/accept", AcceptInvite(cfg, db))
+		r.Get("/sso/{slug}/start", SSOStart(cfg, db, dataSecrets))
+		r.Get("/oidc/{slug}/callback", OIDCCallback(cfg, db, dataSecrets))
+		r.Post("/saml/{slug}/acs", SAMLACS(cfg, db, dataSecrets))
+		r.Get("/saml/{slug}/metadata", SAMLMetadata(cfg, db, dataSecrets))
 	})
 
 	// xAPI routes: require API client credentials (HTTP Basic key_id:secret)
@@ -47,7 +54,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 		r.Use(auth.Middleware(cfg.JWTSecret))
 
 		// Auth: current user
-		r.Get("/api/auth/me", Me())
+		r.Get("/api/auth/me", Me(db))
 
 		// Connection + REST API
 		r.Route("/api", func(r chi.Router) {
@@ -81,6 +88,13 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 					r.Get("/export/jobs/{id}/download", RestDownloadExportJob(cfg, db))
 					r.Post("/export/statements", RestCreateStatementExport(cfg, db))
 					r.Get("/plugins", RestListPlugins(cfg, db, registry))
+					r.Get("/auth-settings", GetAuthSettings(db))
+					r.Put("/auth-settings", PutAuthSettings(db))
+					r.Get("/auth-provider", ListAuthProviders(db))
+					r.Post("/auth-provider", CreateAuthProvider(cfg, db, dataSecrets))
+					r.Patch("/auth-provider/{id}", UpdateAuthProvider(cfg, db, dataSecrets))
+					r.Delete("/auth-provider/{id}", DeleteAuthProvider(db, dataSecrets))
+					r.Post("/auth-provider/{id}/test", TestAuthProvider(db))
 					r.Get("/user", RestListUsers(cfg, db))
 					r.Get("/user/count", RestCountUsers(cfg, db))
 					r.Post("/user/invite", RestInviteUser(cfg, db))

@@ -155,6 +155,16 @@ Available roles: `owner`, `admin`, `member`, `viewer`
 | `PG_DSN` | Yes | `postgres://lrsolid:lrsolid@localhost:5433/lrsolid?sslmode=disable` | PostgreSQL connection string |
 | `JWT_SECRET` | Yes (prod) | dev fallback | HMAC-SHA256 signing secret for session tokens |
 | `DEFAULT_ORG` | No | `default` | Slug of the default organisation |
+| `APP_URL` | No | `http://localhost:5173` | Public web origin used in invite links and SSO redirect URIs |
+| `LOCAL_LOGIN_ENABLED` | No | `true` | When set, updates password login for the default organisation on startup |
+| `OIDC_ENABLED` | No | `false` | Seed an OpenID Connect provider when `OIDC_SLUG` does not exist yet |
+| `OIDC_ISSUER` | If OIDC | | Issuer URL, for example `https://idp.example.edu/realms/main` |
+| `OIDC_CLIENT_ID` | If OIDC | | OAuth client id |
+| `OIDC_CLIENT_SECRET` | No | | Stored encrypted; requires `DATA_STORE_SECRET_KEY` |
+| `SAML_ENABLED` | No | `false` | Seed a SAML / Shibboleth provider when `SAML_SLUG` does not exist yet |
+| `SAML_IDP_METADATA_URL` | If SAML | | IdP metadata URL, for example `https://idp.example.edu/idp/shibboleth` |
+| `SAML_SP_ENTITY_ID` | No | metadata URL | Stable SP entityID |
+| `SAML_SP_CERT_FILE` / `SAML_SP_KEY_FILE` | No | generated | PEM files for the SP signing key |
 
 ---
 
@@ -166,7 +176,66 @@ Available roles: `owner`, `admin`, `member`, `viewer`
 |--------|------|-------------|
 | `POST` | `/api/auth/login` | Login with email + password; sets `lrsolid_session` cookie |
 | `POST` | `/api/auth/logout` | Clears session cookie |
-| `GET` | `/api/auth/me` | Returns current user (id, email, role) |
+| `GET` | `/api/auth/me` | Returns current user (id, email, role, auth provider) |
+| `GET` | `/api/auth/providers` | Enabled SSO providers and whether password login is on |
+| `GET` | `/api/auth/sso/{slug}/start` | Redirect to an OpenID Connect or SAML identity provider |
+| `GET` | `/api/auth/oidc/{slug}/callback` | OpenID Connect redirect URI |
+| `POST` | `/api/auth/saml/{slug}/acs` | SAML assertion consumer service |
+| `GET` | `/api/auth/saml/{slug}/metadata` | SAML service-provider metadata |
+| `GET` | `/api/auth/invite` | Look up an invitation token |
+| `POST` | `/api/auth/invite/accept` | Accept an invitation with a password |
+
+Password login can be turned off per organisation. OpenID Connect (Keycloak, Entra ID, Google, or a Shibboleth IdP with the OIDC plugin) and SAML 2.0 / Shibboleth are configured in Settings → Authentication, or seeded from the environment for the default organisation. See [docs/adr-0005.md](docs/adr-0005.md).
+
+Redirect URLs are built from `APP_URL` and must be registered at the identity provider:
+
+- OpenID Connect: `{APP_URL}/api/auth/oidc/{slug}/callback`
+- SAML ACS: `{APP_URL}/api/auth/saml/{slug}/acs`
+- SAML metadata: `{APP_URL}/api/auth/saml/{slug}/metadata`
+
+For Shibboleth, download the metadata, register the SP with the IdP or federation (DFN-AAI, eduGAIN), and release `subject-id` or `eduPersonPrincipalName`, `mail`, and optionally `displayName`, `eduPersonScopedAffiliation`, `eduPersonEntitlement`. SSO users are created when auto-provision is on or when an unused invite matches their email. Otherwise sign-in stops with "no account".
+
+### Test the connection
+
+**Test** on a provider checks that the API can reach the identity provider. It does not sign a user in and it does not check the client secret. OpenID Connect must publish discovery and signing keys. SAML must return parseable IdP metadata; the message shows the IdP `entityID`.
+
+The URL is fetched by the API process. With `make dev` that is the `api` container, so use a hostname that container can resolve (`dex`, `saml-idp`), not `localhost`.
+
+1. Start the stack. `APP_URL` and `DATA_STORE_SECRET_KEY` come from `docker-compose.dev.yml`. Recreate the API container if it was started before those variables existed:
+
+```bash
+make dev
+docker compose -f docker-compose.dev.yml up -d api
+docker compose -f docker-compose.dev.yml --profile sso up -d dex saml-idp
+```
+
+2. Sign in with email and password and open **Settings → Authentication**.
+
+3. OpenID Connect (Dex). Add a provider and click **Test**:
+
+| Field | Value |
+|-------|-------|
+| Type | OpenID Connect |
+| Display name | Dex |
+| Slug | `dex` |
+| Issuer | `http://dex:5556/dex` |
+| Client ID | `lrsolid` |
+| Client secret | `dev-dex-secret` |
+
+A successful test reports the authorization endpoint, for example `issuer http://dex:5556/dex/auth`. Dex's user is `admin@example.com` / `password`.
+
+4. SAML (test IdP, same shape as Shibboleth). Add a provider and click **Test**:
+
+| Field | Value |
+|-------|-------|
+| Type | SAML / Shibboleth |
+| Display name | Shibboleth |
+| Slug | `shibboleth` |
+| IdP metadata URL | `http://saml-idp:8080/simplesaml/saml2/idp/metadata.php` |
+
+Leave the SP entity ID empty so it becomes `{APP_URL}/api/auth/saml/shibboleth/metadata`. Saving generates the SP key. **Test** reports `idp` plus the entityID. **Metadata** downloads the SP metadata; the test IdP is already aimed at that entityID and ACS URL.
+
+5. Optional full sign-in, after **Test** succeeded. Enable **Auto-provision** (or invite the IdP email), sign out, and use **Continue with …**. For Dex, the browser must resolve the issuer host: add `127.0.0.1 dex` to `/etc/hosts` (port `5556` is published on the host). The test SAML IdP UI is at `http://localhost:8085`. Its login redirect only works in the browser when the SSO URL inside the metadata is a host the browser can open; the **Test** button remains the check that LRSolid itself can read the IdP.
 
 ### xAPI
 

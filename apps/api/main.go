@@ -22,6 +22,7 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/plugins/builtin"
 	"github.com/SGoerzen/LRSolid/internal/plugins/jsplugin"
 	"github.com/SGoerzen/LRSolid/internal/secrets"
+	"github.com/SGoerzen/LRSolid/internal/sso"
 	"github.com/SGoerzen/LRSolid/internal/statsrollup"
 	"github.com/SGoerzen/LRSolid/internal/store"
 	mgstore "github.com/SGoerzen/LRSolid/internal/store/mongodb"
@@ -131,6 +132,25 @@ func main() {
 		}
 		log.Info().Int("count", n).Str("dir", cfg.PluginsDir).Msg("js plugins loaded")
 	}
+
+	if err := sso.Seed(ctx, db, dataSecretStore, cfg); err != nil {
+		log.Error().Err(err).Msg("sso seed failed")
+	}
+
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := sso.Cleanup(ctx, db); err != nil {
+					log.Error().Err(err).Msg("sso cleanup failed")
+				}
+			}
+		}
+	}()
 
 	router := httpapi.NewRouter(cfg, svc, db, registry, dataSecretStore)
 

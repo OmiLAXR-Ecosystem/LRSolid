@@ -67,6 +67,12 @@ export function ProfileView() {
                         </div>
                     </div>
                     <div className="space-y-1">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sign-in</div>
+                        <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200">
+                            {state.user.authProvider ? state.user.authProvider : "Password"}
+                        </div>
+                    </div>
+                    <div className="space-y-1">
                         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rolle</div>
                         <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm capitalize text-slate-700 ring-1 ring-slate-200">
                             {state.user.role}

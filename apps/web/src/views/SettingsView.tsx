@@ -9,6 +9,7 @@ import { fetchExportSettings, updateExportSettings } from "../api/export";
 import { adminAssignUserToOrg, adminCreateOrg, adminCreateUser } from "../api/admin";
 import { ApiError } from "../api/client";
 import { InviteUserDialog } from "../components/users/InviteUserDialog";
+import { AuthSettingsSection } from "../components/settings/AuthSettingsSection";
 import type { ExportSettings } from "../types/export";
 
 function toGB(n: number): string {
@@ -300,6 +301,8 @@ export function SettingsView() {
           </div>
         </div>
       </Card>
+
+      {canManageAdmin && currentOrg && <AuthSettingsSection org={currentOrg} />}
 
       {canManageAdmin && (
         <>

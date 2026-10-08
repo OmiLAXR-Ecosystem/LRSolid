@@ -314,3 +314,16 @@ Verwaltet den State der Users-Ansicht:
 | `VITE_IS_ADMIN` | `"true"` | Zeigt Admin-Panel-Button in Sidebar |
 | `VITE_CAN_EXPORT` | `"true"` | Aktiviert Export-JSON-Aktion |
 | `VITE_CAN_VOID` | `"true"` | Aktiviert Void-Statement-Aktion |
+
+---
+
+## Authentication
+
+### `views/LoginView.tsx`
+- Password form, plus one button per provider from `GET /api/auth/providers`
+- SSO starts with a browser navigation to `/api/auth/sso/{slug}/start`
+- `/accept-invite?token=` sets a password when local login is enabled, or continues with SSO
+
+### `components/settings/AuthSettingsSection.tsx`
+- Organisation authentication settings: local login toggle, OpenID Connect and SAML/Shibboleth providers
+- API: `api/sso.ts`

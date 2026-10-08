@@ -75,7 +75,12 @@ export function UserTable({
                         {!loading && items.map((row) => (
                             <tr key={row.id} className="bg-white">
                                 <td className="px-4 py-3 text-slate-700">{row.displayName ?? row.email}</td>
-                                <td className="px-4 py-3 text-slate-600">{row.email}</td>
+                                <td className="px-4 py-3 text-slate-600">
+                                    {row.email}
+                                    {row.authProvider && (
+                                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{row.authProvider}</span>
+                                    )}
+                                </td>
                                 <td className="px-4 py-3 text-slate-700">{row.role}</td>
                                 <td className="px-4 py-3 text-slate-600">—</td>
                                 <td className="px-4 py-3 text-right">
