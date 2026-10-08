@@ -1,7 +1,7 @@
 import { type MouseEvent, type ReactNode } from "react";
 import {
     LayoutDashboard, FileText, Users, BarChart2,
-    Database, Store, KeyRound, Search, Bell,
+    Database, Puzzle, KeyRound, Search, Bell,
     Calendar, ChevronDown, LogOut, FolderOpen, ShieldCheck,
     MonitorCog, Moon, Sun,
 } from "lucide-react";
@@ -132,8 +132,8 @@ export function AdminShell({
                                 aria-current={activeKey === "marketplace" ? "page" : undefined}
                                 className="w-full flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 transition"
                             >
-                                <Store className="h-5 w-5" />
-                                Plugin Marketplace
+                                <Puzzle className="h-5 w-5" />
+                                Plugins & Extensions
                             </a>
                         </div>
                     </aside>
