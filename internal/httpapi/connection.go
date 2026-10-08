@@ -109,6 +109,7 @@ func ConnectionStatements(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool)
 			until = &end
 		}
 
+		ctx := r.Context()
 		filter := store.StatementFilter{
 			TenantID:    tenant,
 			OrgID:       &orgID,
@@ -121,8 +122,36 @@ func ConnectionStatements(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool)
 			Ascending:   false,
 			Cursor:      afterPtr,
 		}
+		if tenant == "" && svc != nil && len(svc.ExternalStoreIDs()) > 0 {
+			var external int
+			if err := db.QueryRow(ctx, `
+				SELECT COUNT(*)
+				FROM lrs l
+				JOIN projects p ON p.id = l.project_id
+				WHERE p.org_id = $1::uuid
+				  AND l.data_store_id::text = ANY($2::text[])
+			`, orgID, svc.ExternalStoreIDs()).Scan(&external); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "check data stores failed"})
+				return
+			}
+			if external > 0 {
+				writeJSON(w, http.StatusBadRequest, errorResponse{Error: "this organisation stores statements in an external data store; filter by an LRS"})
+				return
+			}
+		}
+		if tenant != "" && svc != nil {
+			var dataStoreID string
+			if err := db.QueryRow(ctx, `SELECT COALESCE(data_store_id::text, '') FROM lrs WHERE id = $1::uuid`, string(tenant)).Scan(&dataStoreID); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "check data store failed"})
+				return
+			}
+			if svc.HasExternalStore(dataStoreID) {
+				ctx = lrs.WithDataStoreID(ctx, dataStoreID)
+				filter.OrgID = nil
+			}
+		}
 
-		page, err := svc.QueryStatements(r.Context(), filter)
+		page, err := svc.QueryStatements(ctx, filter)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
 			return

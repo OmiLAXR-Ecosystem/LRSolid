@@ -94,12 +94,56 @@ type StatementPage struct {
 	NextCursor *string
 }
 
+// Capabilities describes which product features a data store can serve.
+// External databases serve the xAPI ports. Aggregates, exports, and org-wide
+// SQL stay on the control-plane statements table.
+type Capabilities struct {
+	Statements          bool `json:"statements"`
+	State               bool `json:"state"`
+	Profiles            bool `json:"profiles"`
+	OrgWideQuery        bool `json:"orgWideQuery"`
+	Exports             bool `json:"exports"`
+	DashboardAggregates bool `json:"dashboardAggregates"`
+}
+
+// ExternalCapabilities is the feature set of a database attached at runtime.
+func ExternalCapabilities() Capabilities {
+	return Capabilities{Statements: true, State: true, Profiles: true}
+}
+
+// ControlPlaneCapabilities is the feature set of the primary PostgreSQL database.
+func ControlPlaneCapabilities() Capabilities {
+	return Capabilities{
+		Statements: true, State: true, Profiles: true,
+		OrgWideQuery: true, Exports: true, DashboardAggregates: true,
+	}
+}
+
+// Lifecycle closes a connected data store and reports whether it is reachable.
+type Lifecycle interface {
+	Close() error
+	Health(ctx context.Context) error
+}
+
+// StoreBundle groups all xAPI stores for a single data store instance.
+type StoreBundle struct {
+	Statements       StatementStore
+	States           StateStore
+	AgentProfiles    AgentProfileStore
+	ActivityProfiles ActivityProfileStore
+	Attachments      AttachmentStore
+	Lifecycle        Lifecycle
+	DatabaseType     string
+	Capabilities     Capabilities
+}
+
 // StatementStore is the port for xAPI Statements API persistence and queries.
 type StatementStore interface {
 	// UpsertStatements stores statements idempotently.
 	// - If a statement with the same (tenant,id) exists with identical RawJSON, it must be treated as success.
-	// - If it exists but differs, provider may return ErrAlreadyExists (spec-wise this is a conflict).
-	UpsertStatements(ctx context.Context, stmts []Statement) error
+	// - If it exists but differs, the provider returns ErrAlreadyExists (xAPI conflict).
+	// The returned count is the number of newly inserted statements.
+	UpsertStatements(ctx context.Context, stmts []Statement) (int, error)
 
 	// GetStatements returns a stable-ordered page according to StatementFilter.
 	// Ordering MUST be by (StoredAt, ID) with Ascending controlling direction.

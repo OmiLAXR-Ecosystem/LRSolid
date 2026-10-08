@@ -16,7 +16,9 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/SGoerzen/LRSolid/internal/config"
+	"github.com/SGoerzen/LRSolid/internal/datastore"
 	"github.com/SGoerzen/LRSolid/internal/httpapi"
+	"github.com/SGoerzen/LRSolid/internal/limits"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
 	"github.com/SGoerzen/LRSolid/internal/plugins"
 	"github.com/SGoerzen/LRSolid/internal/plugins/builtin"
@@ -76,51 +78,36 @@ func main() {
 		log.Warn().Msg("DATA_STORE_SECRET_KEY not set; encrypted external data store credentials are unavailable")
 	}
 
-	// Load all active data stores with credentials and register them.
-	dsRows, err := db.Query(ctx, `
-		SELECT id::text, name, database_type, connection_string, secret_ref
-		FROM data_stores
-		WHERE is_active = true
-		  AND (
-		    (connection_string IS NOT NULL AND connection_string != '')
-		    OR (secret_ref IS NOT NULL AND secret_ref != '')
-		  )
-	`)
-	if err != nil {
-		log.Fatal().Err(err).Msg("load data stores failed")
-	}
-	for dsRows.Next() {
-		var cfg store.DataStoreConfig
-		var connectionString *string
-		var secretRef *string
-		if err := dsRows.Scan(&cfg.ID, &cfg.Name, &cfg.DatabaseType, &connectionString, &secretRef); err != nil {
-			log.Fatal().Err(err).Msg("scan data store failed")
+	reconcileStores := func() {
+		cfgs, err := datastore.LoadActive(ctx, db, dataSecretStore)
+		if err != nil {
+			log.Error().Err(err).Msg("load data stores failed")
+			return
 		}
-		if secretRef != nil && *secretRef != "" {
-			if dataSecretStore == nil {
-				log.Warn().Str("name", cfg.Name).Msg("data store has encrypted credentials but DATA_STORE_SECRET_KEY is not configured, skipping")
-				continue
-			}
-			plaintext, err := dataSecretStore.Get(ctx, *secretRef)
-			if err != nil {
-				log.Warn().Err(err).Str("name", cfg.Name).Msg("load data store credentials failed, skipping")
-				continue
-			}
-			cfg.ConnectionString = string(plaintext)
-		} else if connectionString != nil {
-			cfg.ConnectionString = *connectionString
-		}
-		if err := storeRegistry.Register(ctx, cfg); err != nil {
-			log.Warn().Err(err).Str("name", cfg.Name).Msg("data store registration failed, skipping")
-		} else {
-			log.Info().Str("name", cfg.Name).Str("type", cfg.DatabaseType).Msg("data store registered")
+		for _, ev := range storeRegistry.Reconcile(ctx, cfgs) {
+			log.Warn().Err(ev.Err).Str("name", ev.Name).Msg("data store registration failed")
 		}
 	}
-	dsRows.Close()
+	reconcileStores()
+	for _, id := range storeRegistry.IDs() {
+		log.Info().Str("id", id).Msg("data store registered")
+	}
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				reconcileStores()
+			}
+		}
+	}()
 
 	// Default fallback: the control-plane Postgres (no connection_string needed).
 	fallbackStmtStore := pgstore.NewStatementStore(db)
-	svc := lrs.NewService(storeRegistry, fallbackStmtStore)
+	svc := lrs.NewService(storeRegistry, fallbackStmtStore, statsrollup.Counters{DB: db}, limits.Checker{DB: db})
 
 	registry := plugins.Global
 	builtin.Register(registry)
@@ -152,7 +139,7 @@ func main() {
 		}
 	}()
 
-	router := httpapi.NewRouter(cfg, svc, db, registry, dataSecretStore)
+	router := httpapi.NewRouter(cfg, svc, db, registry, dataSecretStore, storeRegistry)
 
 	if cfg.StatsRollupEnabled {
 		worker := statsrollup.New(db)
@@ -206,4 +193,5 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
+	storeRegistry.Close()
 }

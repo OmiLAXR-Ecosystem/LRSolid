@@ -9,6 +9,7 @@ import { createLRS, deleteLRS, fetchDataStores, fetchLRSList, fetchProjects } fr
 import type { RestDataStore, RestLRS, RestProject } from "../types/lrs";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { useOrg } from "../contexts/OrgContext";
+import { LimitsButton } from "../components/limits/LimitsPanel";
 
 export function LRSView() {
   const { currentOrg } = useOrg();
@@ -159,12 +160,15 @@ export function LRSView() {
                   <td className="px-4 py-3 text-slate-600">{row.dataStoreName}</td>
                   <td className="px-4 py-3 text-slate-600">{new Date(row.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => void handleDelete(row)}
-                      className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <LimitsButton org={currentOrg} subjectType="lrs" subjectId={row.id} subjectName={row.name} />
+                      <button
+                        onClick={() => void handleDelete(row)}
+                        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -219,6 +223,11 @@ export function LRSView() {
                     : <SelectInput value={dataStoreId} onChange={setDataStoreId} options={dataStoreOptions} />
                   }
                   <div className="mt-1 text-xs text-slate-400">The database backend where xAPI statements are stored.</div>
+                  {dataStores.find((ds) => ds.id === dataStoreId)?.capabilities?.exports === false && (
+                    <div className="mt-1 text-xs text-amber-700">
+                      Exports and dashboard aggregates do not include statements stored in this database. Open statements by selecting this LRS.
+                    </div>
+                  )}
                 </div>
               </div>
             </>

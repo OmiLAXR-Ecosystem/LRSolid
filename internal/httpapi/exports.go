@@ -19,6 +19,7 @@ import (
 
 	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
+	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
 type exportSettingsResponse struct {
@@ -462,7 +463,7 @@ func RestUpdateExportSettings(cfg config.Config, db *pgxpool.Pool) http.HandlerF
 	}
 }
 
-func RestCreateStatementExport(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
+func RestCreateStatementExport(cfg config.Config, db *pgxpool.Pool, stores *store.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		claims, ok := auth.ClaimsFromContext(ctx)
@@ -533,6 +534,10 @@ func RestCreateStatementExport(cfg config.Config, db *pgxpool.Pool) http.Handler
 			ObjectID:         req.ObjectID,
 			StoredAt:         req.StoredAt,
 			Extensions:       req.Extensions,
+		}
+		if err := rejectExternalExport(ctx, db, orgID, lrsID, stores); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
 		}
 		estimateRows, estimateBytes, err := estimateStatementExport(ctx, db, wf)
 		if err != nil {
@@ -753,6 +758,36 @@ func RestGetExportJob(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+func rejectExternalExport(ctx context.Context, db *pgxpool.Pool, orgID string, lrsID *string, stores *store.Registry) error {
+	if stores == nil {
+		return nil
+	}
+	ids := stores.IDs()
+	if len(ids) == 0 {
+		return nil
+	}
+	q := `
+		SELECT COUNT(*)
+		FROM lrs l
+		JOIN projects p ON p.id = l.project_id
+		WHERE p.org_id = $1::uuid
+		  AND l.data_store_id::text = ANY($2::text[])
+	`
+	args := []any{orgID, ids}
+	if lrsID != nil {
+		q += ` AND l.id = $3::uuid`
+		args = append(args, *lrsID)
+	}
+	var n int
+	if err := db.QueryRow(ctx, q, args...).Scan(&n); err != nil {
+		return fmt.Errorf("check data stores failed")
+	}
+	if n > 0 {
+		return fmt.Errorf("exports are not available for learning record stores that use an external data store")
+	}
+	return nil
 }
 
 func estimateStatementExport(ctx context.Context, db *pgxpool.Pool, f statementWhereFilter) (rows int64, bytes int64, err error) {

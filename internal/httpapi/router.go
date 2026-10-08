@@ -12,9 +12,10 @@ import (
 	"github.com/SGoerzen/LRSolid/internal/lrs"
 	"github.com/SGoerzen/LRSolid/internal/plugins"
 	"github.com/SGoerzen/LRSolid/internal/secrets"
+	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
-func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *plugins.Registry, dataSecrets secrets.Store) http.Handler {
+func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *plugins.Registry, dataSecrets secrets.Store, stores *store.Registry) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -70,9 +71,11 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 					r.Post("/org", AdminCreateOrg(db))
 					r.Post("/user", AdminCreateUser(cfg, db))
 					r.Post("/user/assign", AdminAssignUserToOrg(cfg, db))
-					r.Post("/data-store", AdminCreateDataStore(cfg, db, dataSecrets))
-					r.Patch("/data-store/{id}", AdminUpdateDataStore(cfg, db, dataSecrets))
-					r.Delete("/data-store/{id}", AdminDeleteDataStore(cfg, db, dataSecrets))
+					r.Post("/data-store/test", AdminTestDataStore(cfg, db, dataSecrets, stores))
+					r.Post("/data-store", AdminCreateDataStore(cfg, db, dataSecrets, stores))
+					r.Post("/data-store/{id}/test", AdminTestDataStore(cfg, db, dataSecrets, stores))
+					r.Patch("/data-store/{id}", AdminUpdateDataStore(cfg, db, dataSecrets, stores))
+					r.Delete("/data-store/{id}", AdminDeleteDataStore(cfg, db, dataSecrets, stores))
 				})
 
 				// Org-scoped endpoints
@@ -86,7 +89,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 					r.Get("/export/jobs", RestListExportJobs(cfg, db))
 					r.Get("/export/jobs/{id}", RestGetExportJob(cfg, db))
 					r.Get("/export/jobs/{id}/download", RestDownloadExportJob(cfg, db))
-					r.Post("/export/statements", RestCreateStatementExport(cfg, db))
+					r.Post("/export/statements", RestCreateStatementExport(cfg, db, stores))
 					r.Get("/plugins", RestListPlugins(cfg, db, registry))
 					r.Get("/auth-settings", GetAuthSettings(db))
 					r.Put("/auth-settings", PutAuthSettings(db))
@@ -104,10 +107,13 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 					r.Get("/lrs", RestListLRS(cfg, db))
 					r.Post("/lrs", RestCreateLRS(cfg, db))
 					r.Delete("/lrs/{id}", RestDeleteLRS(cfg, db))
-					r.Get("/data-store", RestListDataStores(cfg, db))
+					r.Get("/data-store", RestListDataStores(cfg, db, stores))
 					r.Get("/client", RestListClients(cfg, db))
 					r.Post("/client", RestCreateClient(cfg, db))
 					r.Delete("/client/{id}", RestDeleteClient(cfg, db))
+					r.Get("/limits", RestGetLimits(cfg, db))
+					r.Put("/limits", RestPutLimit(cfg, db))
+					r.Delete("/limits/{id}", RestDeleteLimit(cfg, db))
 				})
 			})
 

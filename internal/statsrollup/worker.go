@@ -24,10 +24,17 @@ type batchRow struct {
 	OrgID     string
 	ProjectID string
 	ClientID  *string
+	Bytes     int64
 }
 
 type dayScopeKey struct {
 	Day   time.Time
+	Scope string
+	ID    string
+}
+
+type hourScopeKey struct {
+	Hour  time.Time
 	Scope string
 	ID    string
 }
@@ -50,6 +57,9 @@ func (w *Worker) RunBatch(ctx context.Context, limit int) (int, error) {
 	`); err != nil {
 		return 0, err
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM statement_stats_hourly WHERE hour < now() - interval '48 hours'`); err != nil {
+		return 0, err
+	}
 
 	var lastStoredAt time.Time
 	var lastTenantID, lastStatementID string
@@ -70,7 +80,8 @@ func (w *Worker) RunBatch(ctx context.Context, limit int) (int, error) {
 			date_trunc('day', st.stored_at AT TIME ZONE 'UTC')::date AS day,
 			p.org_id::text,
 			l.project_id::text,
-			st.client_id::text
+			st.client_id::text,
+			octet_length(st.statement::text)
 		FROM statements st
 		JOIN lrs l ON l.id = st.tenant_id
 		JOIN projects p ON p.id = l.project_id
@@ -86,7 +97,7 @@ func (w *Worker) RunBatch(ctx context.Context, limit int) (int, error) {
 	batch := make([]batchRow, 0, limit)
 	for rows.Next() {
 		var r batchRow
-		if err := rows.Scan(&r.StoredAt, &r.TenantID, &r.ID, &r.Day, &r.OrgID, &r.ProjectID, &r.ClientID); err != nil {
+		if err := rows.Scan(&r.StoredAt, &r.TenantID, &r.ID, &r.Day, &r.OrgID, &r.ProjectID, &r.ClientID, &r.Bytes); err != nil {
 			return 0, err
 		}
 		batch = append(batch, r)
@@ -109,34 +120,61 @@ func (w *Worker) RunBatch(ctx context.Context, limit int) (int, error) {
 	projectCounts := map[string]int64{}
 	lrsCounts := map[string]int64{}
 	clientCounts := map[string]int64{}
+	orgBytes := map[string]int64{}
+	projectBytes := map[string]int64{}
+	lrsBytes := map[string]int64{}
+	clientBytes := map[string]int64{}
 	dayCounts := map[dayScopeKey]int64{}
+	hourCounts := map[hourScopeKey]int64{}
 
 	for _, r := range batch {
+		hour := r.StoredAt.UTC().Truncate(time.Hour)
 		orgCounts[r.OrgID]++
 		projectCounts[r.ProjectID]++
 		lrsCounts[r.TenantID]++
+		orgBytes[r.OrgID] += r.Bytes
+		projectBytes[r.ProjectID] += r.Bytes
+		lrsBytes[r.TenantID] += r.Bytes
 		dayCounts[dayScopeKey{Day: r.Day, Scope: "global", ID: "*"}]++
 		dayCounts[dayScopeKey{Day: r.Day, Scope: "organisation", ID: r.OrgID}]++
 		dayCounts[dayScopeKey{Day: r.Day, Scope: "project", ID: r.ProjectID}]++
 		dayCounts[dayScopeKey{Day: r.Day, Scope: "lrs", ID: r.TenantID}]++
+		hourCounts[hourScopeKey{Hour: hour, Scope: "global", ID: "*"}]++
+		hourCounts[hourScopeKey{Hour: hour, Scope: "organisation", ID: r.OrgID}]++
+		hourCounts[hourScopeKey{Hour: hour, Scope: "project", ID: r.ProjectID}]++
+		hourCounts[hourScopeKey{Hour: hour, Scope: "lrs", ID: r.TenantID}]++
 		if r.ClientID != nil && *r.ClientID != "" {
 			clientCounts[*r.ClientID]++
+			clientBytes[*r.ClientID] += r.Bytes
 			dayCounts[dayScopeKey{Day: r.Day, Scope: "client", ID: *r.ClientID}]++
+			hourCounts[hourScopeKey{Hour: hour, Scope: "client", ID: *r.ClientID}]++
 		}
 	}
 
 	pgBatch := &pgx.Batch{}
 	for id, c := range orgCounts {
-		pgBatch.Queue(`UPDATE organisations SET statement_count = statement_count + $1 WHERE id = $2`, c, id)
+		pgBatch.Queue(`UPDATE organisations SET statement_count = statement_count + $1 WHERE id = $2::uuid`, c, id)
 	}
 	for id, c := range projectCounts {
-		pgBatch.Queue(`UPDATE projects SET statement_count = statement_count + $1 WHERE id = $2`, c, id)
+		pgBatch.Queue(`UPDATE projects SET statement_count = statement_count + $1 WHERE id = $2::uuid`, c, id)
 	}
 	for id, c := range lrsCounts {
 		pgBatch.Queue(`UPDATE lrs SET statement_count = statement_count + $1 WHERE id = $2`, c, id)
 	}
 	for id, c := range clientCounts {
-		pgBatch.Queue(`UPDATE clients SET statement_count = statement_count + $1 WHERE id = $2`, c, id)
+		pgBatch.Queue(`UPDATE clients SET statement_count = statement_count + $1 WHERE id = $2::uuid`, c, id)
+	}
+	for id, c := range orgBytes {
+		pgBatch.Queue(`UPDATE organisations SET storage_bytes = storage_bytes + $1 WHERE id = $2::uuid`, c, id)
+	}
+	for id, c := range projectBytes {
+		pgBatch.Queue(`UPDATE projects SET storage_bytes = storage_bytes + $1 WHERE id = $2::uuid`, c, id)
+	}
+	for id, c := range lrsBytes {
+		pgBatch.Queue(`UPDATE lrs SET storage_bytes = storage_bytes + $1 WHERE id = $2`, c, id)
+	}
+	for id, c := range clientBytes {
+		pgBatch.Queue(`UPDATE clients SET storage_bytes = storage_bytes + $1 WHERE id = $2::uuid`, c, id)
 	}
 	for k, c := range dayCounts {
 		pgBatch.Queue(`
@@ -145,6 +183,14 @@ func (w *Worker) RunBatch(ctx context.Context, limit int) (int, error) {
 			ON CONFLICT (day, scope_type, scope_id)
 			DO UPDATE SET statement_count = statement_stats_daily.statement_count + EXCLUDED.statement_count
 		`, k.Day, k.Scope, k.ID, c)
+	}
+	for k, c := range hourCounts {
+		pgBatch.Queue(`
+			INSERT INTO statement_stats_hourly (hour, scope_type, scope_id, statement_count)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (hour, scope_type, scope_id)
+			DO UPDATE SET statement_count = statement_stats_hourly.statement_count + EXCLUDED.statement_count
+		`, k.Hour, k.Scope, k.ID, c)
 	}
 
 	last := batch[len(batch)-1]

@@ -3,6 +3,7 @@ package lrs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/SGoerzen/LRSolid/internal/store"
@@ -12,9 +13,9 @@ type fakeStmtStore struct {
 	last []store.Statement
 }
 
-func (f *fakeStmtStore) UpsertStatements(ctx context.Context, stmts []store.Statement) error {
+func (f *fakeStmtStore) UpsertStatements(ctx context.Context, stmts []store.Statement) (int, error) {
 	f.last = append([]store.Statement(nil), stmts...)
-	return nil
+	return len(stmts), nil
 }
 
 func (f *fakeStmtStore) GetStatements(ctx context.Context, flt store.StatementFilter) (store.StatementPage, error) {
@@ -27,7 +28,7 @@ func (f *fakeStmtStore) GetStatementByID(ctx context.Context, tenant store.Tenan
 
 func TestIngestStatements_AssignsIDAndExtractsFields(t *testing.T) {
 	fs := &fakeStmtStore{}
-	svc := NewService(fs)
+	svc := NewService(nil, fs, nil, nil)
 
 	stmt := map[string]any{
 		"actor":  map[string]any{"mbox": "mailto:alice@example.org"},
@@ -61,9 +62,28 @@ func TestIngestStatements_AssignsIDAndExtractsFields(t *testing.T) {
 	}
 }
 
+type denyLimits struct{}
+
+func (denyLimits) Check(context.Context, store.TenantID, *string, int, int64) error {
+	return errors.New("limited")
+}
+
+func TestIngestStatements_LimitBlocksStore(t *testing.T) {
+	fs := &fakeStmtStore{}
+	svc := NewService(nil, fs, nil, denyLimits{})
+	raw := json.RawMessage(`{"actor":{"mbox":"mailto:a@b.c"},"verb":{"id":"http://example.com/v"},"object":{"id":"http://example.com/a"}}`)
+	_, err := svc.IngestStatements(context.Background(), store.TenantID("t1"), nil, []json.RawMessage{raw})
+	if err == nil {
+		t.Fatal("expected limit error")
+	}
+	if len(fs.last) != 0 {
+		t.Fatal("statement stored despite limit")
+	}
+}
+
 func TestIngestStatements_InvalidJSON(t *testing.T) {
 	fs := &fakeStmtStore{}
-	svc := NewService(fs)
+	svc := NewService(nil, fs, nil, nil)
 
 	bad := json.RawMessage([]byte("{not-json"))
 	_, err := svc.IngestStatements(context.Background(), store.TenantID("t1"), nil, []json.RawMessage{bad})

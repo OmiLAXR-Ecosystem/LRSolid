@@ -18,33 +18,46 @@ func NewStatementStore(db *pgxpool.Pool) *StatementStore {
 	return &StatementStore{db: db}
 }
 
-func (s *StatementStore) UpsertStatements(ctx context.Context, stmts []store.Statement) error {
+func (s *StatementStore) UpsertStatements(ctx context.Context, stmts []store.Statement) (int, error) {
 	if len(stmts) == 0 {
-		return nil
+		return 0, nil
 	}
 
-	// MVP: insert, ignore duplicates by (tenant_id, id)
-	// TODO: if duplicate exists with different content -> return ErrAlreadyExists (strict conformance)
 	batch := &pgx.Batch{}
 	for _, st := range stmts {
 		batch.Queue(`
-			INSERT INTO statements (
-				tenant_id, id, stored_at, actor_mbox, verb_id, object_id, client_id, statement
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-			ON CONFLICT (tenant_id, id) DO NOTHING
+			WITH ins AS (
+				INSERT INTO statements (
+					tenant_id, id, stored_at, actor_mbox, verb_id, object_id, client_id, statement
+				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+				ON CONFLICT (tenant_id, id) DO NOTHING
+				RETURNING id
+			)
+			SELECT (SELECT id FROM ins),
+			       (SELECT statement FROM statements WHERE tenant_id = $1 AND id = $2)
 		`, st.TenantID, st.ID, st.StoredAt, st.ActorMBox, st.VerbID, st.ObjectID, st.ClientID, st.RawJSON)
 	}
 
 	br := s.db.SendBatch(ctx, batch)
 	defer br.Close()
 
-	for range stmts {
-		_, err := br.Exec()
+	inserted := 0
+	for _, st := range stmts {
+		var insertedID *string
+		var existing []byte
+		err := br.QueryRow().Scan(&insertedID, &existing)
 		if err != nil {
-			return err
+			return inserted, err
+		}
+		if insertedID != nil {
+			inserted++
+			continue
+		}
+		if !store.JSONEqual(existing, st.RawJSON) {
+			return inserted, store.ErrAlreadyExists
 		}
 	}
-	return nil
+	return inserted, nil
 }
 
 func (s *StatementStore) GetStatementByID(ctx context.Context, tenant store.TenantID, id store.StatementID) (store.Statement, error) {

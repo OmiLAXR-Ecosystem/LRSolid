@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/SGoerzen/LRSolid/internal/config"
+	"github.com/SGoerzen/LRSolid/internal/limits"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
 	"github.com/SGoerzen/LRSolid/internal/store"
 )
@@ -40,7 +42,23 @@ func PostStatements(cfg config.Config, svc *lrs.Service) http.HandlerFunc {
 
 		ids, err := svc.IngestStatements(ctx, tenant, clientID, rawList)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			var exceeded *limits.ExceededError
+			if errors.As(err, &exceeded) {
+				if sec := exceeded.RetryAfter(time.Now()); sec > 0 {
+					w.Header().Set("Retry-After", strconv.Itoa(sec))
+				}
+				status := http.StatusRequestEntityTooLarge
+				if exceeded.Metric == limits.MetricStatementsPerHour || exceeded.Metric == limits.MetricStatementsPerDay {
+					status = http.StatusTooManyRequests
+				}
+				http.Error(w, exceeded.Error(), status)
+				return
+			}
+			status := http.StatusBadRequest
+			if errors.Is(err, store.ErrAlreadyExists) {
+				status = http.StatusConflict
+			}
+			http.Error(w, err.Error(), status)
 			return
 		}
 

@@ -327,3 +327,7 @@ Verwaltet den State der Users-Ansicht:
 ### `components/settings/AuthSettingsSection.tsx`
 - Organisation authentication settings: local login toggle, OpenID Connect and SAML/Shibboleth providers
 - API: `api/sso.ts`
+
+### `components/settings/DataStoresSection.tsx`
+- Connect, test, deactivate, and delete an external PostgreSQL or MongoDB data store
+- API: `api/dataStores.ts` (`GET /api/v1/{org}/data-store`, admin `POST/PATCH/DELETE /api/v1/admin/data-store`)

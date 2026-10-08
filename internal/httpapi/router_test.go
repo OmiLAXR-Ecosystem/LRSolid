@@ -7,6 +7,7 @@ import (
 
 	"github.com/SGoerzen/LRSolid/internal/config"
 	"github.com/SGoerzen/LRSolid/internal/plugins"
+	"github.com/SGoerzen/LRSolid/internal/store"
 )
 
 func TestXAPIStatementsRouteWithoutAuth_MatchesBothSlashVariants(t *testing.T) {
@@ -16,7 +17,7 @@ func TestXAPIStatementsRouteWithoutAuth_MatchesBothSlashVariants(t *testing.T) {
 		JWTSecret:     "dev-secret",
 	}
 
-	router := NewRouter(cfg, nil, nil, &plugins.Registry{}, nil)
+	router := NewRouter(cfg, nil, nil, &plugins.Registry{}, nil, store.NewRegistry())
 
 	tests := []struct {
 		name string

@@ -36,12 +36,27 @@ export type CreateProjectPayload = {
   description?: string;
 };
 
+export type DataStoreCapabilities = {
+  statements: boolean;
+  state: boolean;
+  profiles: boolean;
+  orgWideQuery: boolean;
+  exports: boolean;
+  dashboardAggregates: boolean;
+};
+
 export type RestDataStore = {
   id: string;
   name: string;
   databaseType: string;
-  host: string;
+  host?: string;
   isDefault: boolean;
+  isActive?: boolean;
+  hasConnectionString?: boolean;
+  description?: string | null;
+  status?: "connected" | "control_plane" | "error" | "unavailable" | "inactive" | "not_configured" | string;
+  statusError?: string;
+  capabilities?: DataStoreCapabilities;
 };
 
 export type RestDataStoreListResponse = {

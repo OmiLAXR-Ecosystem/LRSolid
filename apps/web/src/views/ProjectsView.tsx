@@ -8,6 +8,7 @@ import { createProject, deleteProject, fetchProjects } from "../api/lrs";
 import type { RestProject } from "../types/lrs";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { useOrg } from "../contexts/OrgContext";
+import { LimitsButton } from "../components/limits/LimitsPanel";
 
 export function ProjectsView() {
   const { currentOrg } = useOrg();
@@ -136,12 +137,15 @@ export function ProjectsView() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{new Date(row.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => void handleDelete(row)}
-                      className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <LimitsButton org={currentOrg} subjectType="project" subjectId={row.id} subjectName={row.name} />
+                      <button
+                        onClick={() => void handleDelete(row)}
+                        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

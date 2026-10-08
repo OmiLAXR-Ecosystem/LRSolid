@@ -4,9 +4,26 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
+
+	"go.mongodb.org/mongo-driver/v2/mongo"
 
 	"github.com/SGoerzen/LRSolid/internal/store"
 )
+
+type clientLifecycle struct {
+	client *mongo.Client
+}
+
+func (c *clientLifecycle) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return c.client.Disconnect(ctx)
+}
+
+func (c *clientLifecycle) Health(ctx context.Context) error {
+	return c.client.Ping(ctx, nil)
+}
 
 // NewStoreBundle is a store.StoreFactory for MongoDB.
 // The connection string must be a valid MongoDB URI, optionally with the
@@ -14,7 +31,7 @@ import (
 // If no database name is found in the URI, "lrsolid" is used as default.
 func NewStoreBundle(ctx context.Context, cfg store.DataStoreConfig) (store.StoreBundle, error) {
 	dbName := dbNameFromURI(cfg.ConnectionString)
-	db, err := Open(ctx, cfg.ConnectionString, dbName)
+	client, db, err := Open(ctx, cfg.ConnectionString, dbName)
 	if err != nil {
 		return store.StoreBundle{}, fmt.Errorf("mongodb connect: %w", err)
 	}
@@ -25,6 +42,9 @@ func NewStoreBundle(ctx context.Context, cfg store.DataStoreConfig) (store.Store
 		AgentProfiles:    NewAgentProfileStore(db),
 		ActivityProfiles: NewActivityProfileStore(db),
 		Attachments:      NewAttachmentStore(db),
+		Lifecycle:        &clientLifecycle{client: client},
+		DatabaseType:     "mongodb",
+		Capabilities:     store.ExternalCapabilities(),
 	}, nil
 }
 

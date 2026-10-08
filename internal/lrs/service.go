@@ -28,19 +28,47 @@ func dataStoreIDFromCtx(ctx context.Context) string {
 	return ""
 }
 
-type Service struct {
-	registry  *store.Registry
-	fallback  store.StatementStore // used when no data_store_id in context (e.g. legacy/admin flows)
+// StatementCounters updates control-plane totals for statements that are not
+// stored in the primary database (the rollup worker never sees those rows).
+type StatementCounters interface {
+	Add(ctx context.Context, tenant store.TenantID, clientID *string, n int, bytes int64, at time.Time) error
 }
 
-func NewService(registry *store.Registry, fallback store.StatementStore) *Service {
-	return &Service{registry: registry, fallback: fallback}
+// LimitChecker rejects a batch that would cross a quota on the tenant chain.
+type LimitChecker interface {
+	Check(ctx context.Context, tenant store.TenantID, clientID *string, count int, bytes int64) error
+}
+
+type Service struct {
+	registry *store.Registry
+	fallback store.StatementStore // control-plane Postgres, used when no external store is selected
+	counters StatementCounters
+	limits   LimitChecker
+}
+
+func NewService(registry *store.Registry, fallback store.StatementStore, counters StatementCounters, limits LimitChecker) *Service {
+	return &Service{registry: registry, fallback: fallback, counters: counters, limits: limits}
+}
+
+// HasExternalStore reports whether statements for this data store live outside the control plane.
+func (s *Service) HasExternalStore(dataStoreID string) bool {
+	return s != nil && s.registry != nil && s.registry.Has(dataStoreID)
+}
+
+// ExternalStoreIDs lists connected external data stores.
+func (s *Service) ExternalStoreIDs() []string {
+	if s == nil || s.registry == nil {
+		return nil
+	}
+	return s.registry.IDs()
 }
 
 func (s *Service) statementsFor(ctx context.Context) store.StatementStore {
-	if id := dataStoreIDFromCtx(ctx); id != "" {
-		if bundle, err := s.registry.Get(id); err == nil {
-			return bundle.Statements
+	if s.registry != nil {
+		if id := dataStoreIDFromCtx(ctx); id != "" {
+			if bundle, err := s.registry.Get(id); err == nil && bundle.Statements != nil {
+				return bundle.Statements
+			}
 		}
 	}
 	return s.fallback
@@ -109,8 +137,27 @@ func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, c
 		ids = append(ids, id)
 	}
 
-	if err := s.statementsFor(ctx).UpsertStatements(ctx, stmts); err != nil {
+	var totalBytes int64
+	for _, st := range stmts {
+		totalBytes += int64(len(st.RawJSON))
+	}
+	if s.limits != nil {
+		if err := s.limits.Check(ctx, tenant, clientID, len(stmts), totalBytes); err != nil {
+			return nil, err
+		}
+	}
+
+	target := s.statementsFor(ctx)
+	n, err := target.UpsertStatements(ctx, stmts)
+	if err != nil {
 		return nil, err
+	}
+	if s.counters != nil && target != s.fallback && n > 0 {
+		bytes := totalBytes
+		if n < len(stmts) && len(stmts) > 0 {
+			bytes = totalBytes * int64(n) / int64(len(stmts))
+		}
+		_ = s.counters.Add(ctx, tenant, clientID, n, bytes, now)
 	}
 	return ids, nil
 }

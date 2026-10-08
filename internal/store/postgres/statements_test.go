@@ -9,7 +9,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/SGoerzen/LRSolid/internal/store"
+	"github.com/SGoerzen/LRSolid/internal/store/storetest"
 )
+
+func TestStatements_Contract(t *testing.T) {
+	withTestDB(t, func(ctx context.Context, pool *pgxpool.Pool) {
+		storetest.RunStatementTests(t, NewStatementStore(pool))
+	})
+}
 
 func TestStatements_InsertAndQueryWithCursor(t *testing.T) {
 	withTestDB(t, func(ctx context.Context, pool *pgxpool.Pool) {
@@ -29,7 +36,7 @@ func TestStatements_EndToEnd(t *testing.T) {
 		rawA, _ := json.Marshal(stmtA)
 		rawB, _ := json.Marshal(stmtB)
 
-		err := ss.UpsertStatements(ctx, []store.Statement{
+		_, err := ss.UpsertStatements(ctx, []store.Statement{
 			{TenantID: "t1", ID: "a", StoredAt: t0, ActorMBox: strp("mailto:a@x"), VerbID: strp("v1"), ObjectID: strp("o1"), RawJSON: rawA},
 			{TenantID: "t1", ID: "b", StoredAt: t1, ActorMBox: strp("mailto:b@x"), VerbID: strp("v1"), ObjectID: strp("o1"), RawJSON: rawB},
 		})

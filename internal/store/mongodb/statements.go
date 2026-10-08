@@ -21,31 +21,33 @@ func NewStatementStore(db *mongo.Database) *StatementStore {
 }
 
 type statementDoc struct {
-	// _id is composite "tenant_id|id" for idempotency without a unique index overhead
-	DocID       string     `bson:"_id"`
-	TenantID    string     `bson:"tenant_id"`
-	ID          string     `bson:"id"`
-	StoredAt    time.Time  `bson:"stored_at"`
-	Timestamp   *time.Time `bson:"timestamp,omitempty"`
-	ClientID    *string    `bson:"client_id,omitempty"`
-	ActorMBox   *string    `bson:"actor_mbox,omitempty"`
-	ActorSHA256 *string    `bson:"actor_sha256,omitempty"`
-	VerbID      *string    `bson:"verb_id,omitempty"`
-	ObjectID    *string    `bson:"object_id,omitempty"`
-	Registration *string   `bson:"registration,omitempty"`
-	Raw         bson.Raw   `bson:"raw"`
+	// _id is composite "tenant_id|id" so idempotency does not need a second unique index.
+	DocID        string     `bson:"_id"`
+	TenantID     string     `bson:"tenant_id"`
+	ID           string     `bson:"id"`
+	StoredAt     time.Time  `bson:"stored_at"`
+	Timestamp    *time.Time `bson:"timestamp,omitempty"`
+	ClientID     *string    `bson:"client_id,omitempty"`
+	ActorMBox    *string    `bson:"actor_mbox,omitempty"`
+	ActorSHA256  *string    `bson:"actor_sha256,omitempty"`
+	VerbID       *string    `bson:"verb_id,omitempty"`
+	ObjectID     *string    `bson:"object_id,omitempty"`
+	Registration *string    `bson:"registration,omitempty"`
+	Agents       []string   `bson:"agents,omitempty"`
+	// RawJSON is the original xAPI document, used for idempotent replays.
+	RawJSON []byte `bson:"raw_json,omitempty"`
+	// Raw is the same document with dotted extension keys escaped so MongoDB can store and index it.
+	Raw bson.Raw `bson:"raw,omitempty"`
 }
 
 func toDoc(st store.Statement) (statementDoc, error) {
-	var raw bson.Raw
-	if err := bson.UnmarshalExtJSON(st.RawJSON, true, &raw); err != nil {
-		// Fall back to storing as-is if not valid extended JSON
-		raw = bson.Raw{}
-		var m map[string]any
-		if jsonErr := json.Unmarshal(st.RawJSON, &m); jsonErr == nil {
-			b, _ := bson.Marshal(m)
-			raw = b
-		}
+	var payload map[string]any
+	if err := json.Unmarshal(st.RawJSON, &payload); err != nil {
+		return statementDoc{}, err
+	}
+	encoded, err := bson.Marshal(escapeValue(payload))
+	if err != nil {
+		return statementDoc{}, err
 	}
 	return statementDoc{
 		DocID:        string(st.TenantID) + "|" + string(st.ID),
@@ -59,14 +61,24 @@ func toDoc(st store.Statement) (statementDoc, error) {
 		VerbID:       st.VerbID,
 		ObjectID:     st.ObjectID,
 		Registration: st.Registration,
-		Raw:          raw,
+		Agents:       agentIFIDs(payload),
+		RawJSON:      append([]byte(nil), st.RawJSON...),
+		Raw:          encoded,
 	}, nil
 }
 
 func fromDoc(d statementDoc) (store.Statement, error) {
-	rawJSON, err := bson.MarshalExtJSON(d.Raw, true, false)
-	if err != nil {
-		return store.Statement{}, err
+	rawJSON := d.RawJSON
+	if len(rawJSON) == 0 && len(d.Raw) > 0 {
+		var escaped any
+		if err := bson.Unmarshal(d.Raw, &escaped); err != nil {
+			return store.Statement{}, err
+		}
+		encoded, err := json.Marshal(unescapeValue(escaped))
+		if err != nil {
+			return store.Statement{}, err
+		}
+		rawJSON = encoded
 	}
 	return store.Statement{
 		TenantID:     store.TenantID(d.TenantID),
@@ -83,25 +95,66 @@ func fromDoc(d statementDoc) (store.Statement, error) {
 	}, nil
 }
 
-func (s *StatementStore) UpsertStatements(ctx context.Context, stmts []store.Statement) error {
-	if len(stmts) == 0 {
+func agentIFIDs(payload map[string]any) []string {
+	actor, _ := payload["actor"].(map[string]any)
+	if actor == nil {
 		return nil
 	}
+	var out []string
+	add := func(m map[string]any) {
+		if mb, ok := m["mbox"].(string); ok && mb != "" {
+			out = append(out, "mbox:"+mb)
+		}
+		if home, ok := m["account"].(map[string]any); ok {
+			name, _ := home["name"].(string)
+			page, _ := home["homePage"].(string)
+			if name != "" || page != "" {
+				out = append(out, "account:"+page+"|"+name)
+			}
+		}
+	}
+	add(actor)
+	members, _ := actor["member"].([]any)
+	for _, member := range members {
+		if m, ok := member.(map[string]any); ok {
+			add(m)
+		}
+	}
+	return out
+}
 
-	models := make([]mongo.WriteModel, 0, len(stmts))
+func (s *StatementStore) UpsertStatements(ctx context.Context, stmts []store.Statement) (int, error) {
+	if len(stmts) == 0 {
+		return 0, nil
+	}
+
+	inserted := 0
 	for _, st := range stmts {
 		doc, err := toDoc(st)
 		if err != nil {
-			return err
+			return inserted, err
 		}
-		models = append(models, mongo.NewReplaceOneModel().
-			SetFilter(bson.D{{Key: "_id", Value: doc.DocID}}).
-			SetReplacement(doc).
-			SetUpsert(true))
+		_, err = s.col.InsertOne(ctx, doc)
+		if err == nil {
+			inserted++
+			continue
+		}
+		if !mongo.IsDuplicateKeyError(err) {
+			return inserted, err
+		}
+		var existing statementDoc
+		if err := s.col.FindOne(ctx, bson.D{{Key: "_id", Value: doc.DocID}}).Decode(&existing); err != nil {
+			return inserted, err
+		}
+		got, err := fromDoc(existing)
+		if err != nil {
+			return inserted, err
+		}
+		if !store.JSONEqual(got.RawJSON, st.RawJSON) {
+			return inserted, store.ErrAlreadyExists
+		}
 	}
-
-	_, err := s.col.BulkWrite(ctx, models, options.BulkWrite().SetOrdered(false))
-	return err
+	return inserted, nil
 }
 
 func (s *StatementStore) GetStatementByID(ctx context.Context, tenant store.TenantID, id store.StatementID) (store.Statement, error) {

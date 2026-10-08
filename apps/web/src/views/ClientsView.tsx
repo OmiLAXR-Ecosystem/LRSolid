@@ -14,6 +14,7 @@ import { useOrg } from "../contexts/OrgContext";
 import type { CreateClientResponse, RestClient, RestLRS } from "../types/client";
 import type { RestUser } from "../types/user";
 import { useConfirm } from "../contexts/ConfirmContext";
+import { LimitsButton } from "../components/limits/LimitsPanel";
 
 type ScopeState = {
   statementsRead: boolean;
@@ -387,12 +388,15 @@ export function ClientsView() {
                   <td className="px-4 py-3 text-slate-600">{toLocalDateString(row.expiresAt) || "Never"}</td>
                   <td className="px-4 py-3 text-slate-600 max-w-[340px] truncate" title={row.note ?? ""}>{row.note || "-"}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => void handleDelete(row)}
-                      className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <LimitsButton org={currentOrg} subjectType="client" subjectId={row.id} subjectName={row.name} />
+                      <button
+                        onClick={() => void handleDelete(row)}
+                        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

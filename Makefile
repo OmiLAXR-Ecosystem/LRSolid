@@ -73,6 +73,8 @@ PG_DSN ?= $(DEV_PG_DSN)
 # HELP: logs api | Tail API logs (production)
 # HELP: migrate down | Roll back one DB migration
 # HELP: migrate up | Run DB migrations up
+# HELP: mongo down | Stop/remove local MongoDB container
+# HELP: mongo up | Start local MongoDB (docker) for an external data store
 # HELP: pg down | Stop/remove local Postgres container
 # HELP: pg up | Start local Postgres (docker)
 # HELP: s3 down | Stop/remove local S3-compatible RustFS container
@@ -99,6 +101,7 @@ help: ## Show available targets
 		printf "  Web         http://localhost:%s  (DEV_WEB_PORT)\n" "$(DEV_WEB_PORT)"; \
 		printf "  API         http://localhost:%s  (DEV_API_PORT)\n" "$(DEV_API_PORT)"; \
 		printf "  PostgreSQL  localhost:%s         (DEV_POSTGRES_PORT)\n" "$(DEV_POSTGRES_PORT)"; \
+		printf "  MongoDB     localhost:27017        (make mongo up)\n"; \
 		printf "  S3 API      http://localhost:%s  (DEV_S3_PORT)\n" "$(DEV_S3_PORT)"; \
 		printf "  S3 Console  http://localhost:%s  (DEV_S3_CONSOLE_PORT)\n" "$(DEV_S3_CONSOLE_PORT)"; \
 		printf "\nOverride example:\n"; \
@@ -106,7 +109,7 @@ help: ## Show available targets
 	}
 
 COMMAND_GOALS := $(strip $(MAKECMDGOALS))
-COMMAND_WORDS := admin api build clean create deps dev detached docker down fmt get help install lint logs migrate pg post psql push restart s3 smoke test tidy up user volumes web xapi
+COMMAND_WORDS := admin api build clean create deps dev detached docker down fmt get help install lint logs migrate mongo pg post psql push restart s3 smoke test tidy up user volumes web xapi
 
 .PHONY: $(COMMAND_WORDS) __dispatch
 $(filter-out help,$(COMMAND_WORDS)): __dispatch
@@ -143,6 +146,8 @@ __dispatch:
 		"logs api") $(MAKE) --no-print-directory __logs_api ;; \
 		"migrate down") $(MAKE) --no-print-directory __migrate_down ;; \
 		"migrate up") $(MAKE) --no-print-directory __migrate_up ;; \
+		"mongo down") $(MAKE) --no-print-directory __mongo_down ;; \
+		"mongo up") $(MAKE) --no-print-directory __mongo_up ;; \
 		"pg down") $(MAKE) --no-print-directory __pg_down ;; \
 		"pg up") $(MAKE) --no-print-directory __pg_up ;; \
 		"s3 down") $(MAKE) --no-print-directory __s3_down ;; \
@@ -404,6 +409,14 @@ __pg_up:
 .PHONY: __pg_down
 __pg_down:
 	@docker rm -f lrsolid-pg || true
+
+.PHONY: __mongo_up
+__mongo_up:
+	@docker run --name lrsolid-mongo -p 27017:27017 -d mongo:7 || true
+
+.PHONY: __mongo_down
+__mongo_down:
+	@docker rm -f lrsolid-mongo || true
 
 .PHONY: __migrate_up
 __migrate_up:

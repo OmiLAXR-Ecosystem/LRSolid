@@ -1,4 +1,9 @@
 services:
+  mongo:
+    image: mongo:7
+    profiles: ["mongo"]
+    ports: ["27017:27017"]
+
   postgres:
     image: postgres:16
     environment:

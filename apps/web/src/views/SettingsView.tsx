@@ -10,6 +10,8 @@ import { adminAssignUserToOrg, adminCreateOrg, adminCreateUser } from "../api/ad
 import { ApiError } from "../api/client";
 import { InviteUserDialog } from "../components/users/InviteUserDialog";
 import { AuthSettingsSection } from "../components/settings/AuthSettingsSection";
+import { DataStoresSection } from "../components/settings/DataStoresSection";
+import { LimitsEditor } from "../components/limits/LimitsPanel";
 import type { ExportSettings } from "../types/export";
 
 function toGB(n: number): string {
@@ -88,6 +90,7 @@ export function SettingsView() {
   const [assignMessage, setAssignMessage] = useState<string | null>(null);
 
   const orgOptions = orgs.map((org) => ({ label: `${org.name} (${org.slug})`, value: org.slug }));
+  const currentOrgRecord = orgs.find((org) => org.slug === currentOrg);
   const generatedOrgSlug = `${slugifyOrgName(newOrgName)}-${orgSlugRandomSuffix}`;
 
   useEffect(() => {
@@ -302,6 +305,19 @@ export function SettingsView() {
         </div>
       </Card>
 
+      {currentOrgRecord && (
+        <Card>
+          <div className="space-y-4">
+            <div>
+              <div className="text-lg font-semibold text-slate-800">Usage limits</div>
+              <div className="text-sm text-slate-500">Caps for the whole organization. Project, LRS, and client limits apply as well.</div>
+            </div>
+            <LimitsEditor org={currentOrg} subjectType="organisation" subjectId={currentOrgRecord.id} />
+          </div>
+        </Card>
+      )}
+
+      {canManageAdmin && currentOrg && <DataStoresSection org={currentOrg} />}
       {canManageAdmin && currentOrg && <AuthSettingsSection org={currentOrg} />}
 
       {canManageAdmin && (

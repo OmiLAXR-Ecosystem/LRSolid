@@ -148,12 +148,19 @@ Available roles: `owner`, `admin`, `member`, `viewer`
 
 ---
 
+## External data stores
+
+PostgreSQL remains the primary database. An organisation can attach another PostgreSQL or a MongoDB database from **Settings → Data stores** and assign it when creating an LRS. The connection string is encrypted with `DATA_STORE_SECRET_KEY` and the API connects without a restart.
+
+Attached databases store xAPI statements, state, and profiles. Statement exports, dashboard aggregates, and the organisation-wide statement list stay on the primary database; open an LRS that uses an external store to see its statements. `make mongo up` starts a local MongoDB on port 27017 for trying this (`mongodb://localhost:27017/lrsolid`).
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `PG_DSN` | Yes | `postgres://lrsolid:lrsolid@localhost:5433/lrsolid?sslmode=disable` | PostgreSQL connection string |
 | `JWT_SECRET` | Yes (prod) | dev fallback | HMAC-SHA256 signing secret for session tokens |
+| `DATA_STORE_SECRET_KEY` | To attach a database | | 32-byte hex key that encrypts external data-store connection strings |
 | `DEFAULT_ORG` | No | `default` | Slug of the default organisation |
 | `APP_URL` | No | `http://localhost:5173` | Public web origin used in invite links and SSO redirect URIs |
 | `LOCAL_LOGIN_ENABLED` | No | `true` | When set, updates password login for the default organisation on startup |
@@ -332,6 +339,7 @@ make xapi smoke            POST + GET a test xAPI statement
 | [docs/adr-0001.md](docs/adr-0001.md) | Storage strategy: PostgreSQL-first, provider abstraction |
 | [docs/adr-0002.md](docs/adr-0002.md) | xAPI statement schema: column extraction, denormalisation |
 | [docs/adr-0003.md](docs/adr-0003.md) | Analytics architecture: Kafka + ClickHouse/TimescaleDB |
+| [docs/adr-0006.md](docs/adr-0006.md) | PostgreSQL vs MongoDB for xAPI volume and structured filters |
 | [docs/frontend-components.md](docs/frontend-components.md) | React component reference |
 
 ---

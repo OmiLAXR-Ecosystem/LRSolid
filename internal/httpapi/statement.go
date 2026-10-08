@@ -62,18 +62,20 @@ func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Han
 			return
 		}
 
+		ctx := r.Context()
 		tenant := store.TenantID("")
 		if lrsID := r.URL.Query().Get("lrs"); lrsID != "" {
 			var allowed bool
-			if err := db.QueryRow(r.Context(), `
+			var dataStoreID string
+			if err := db.QueryRow(ctx, `
 				SELECT EXISTS(
 					SELECT 1
 					FROM lrs l
 					JOIN projects p ON p.id = l.project_id
 					JOIN organisations o ON o.id = p.org_id
 					WHERE l.id = $1::uuid AND o.slug = $2
-				)
-			`, lrsID, orgSlug).Scan(&allowed); err != nil {
+				), COALESCE((SELECT data_store_id::text FROM lrs WHERE id = $1::uuid), '')
+			`, lrsID, orgSlug).Scan(&allowed, &dataStoreID); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "check lrs failed"})
 				return
 			}
@@ -82,15 +84,21 @@ func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Han
 				return
 			}
 			tenant = store.TenantID(lrsID)
+			if svc.HasExternalStore(dataStoreID) {
+				ctx = lrs.WithDataStoreID(ctx, dataStoreID)
+			}
 		}
 		id := chi.URLParam(r, "id")
 		if id == "" {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "missing id"})
 			return
 		}
+
+		var st store.Statement
+		var err error
 		if tenant == "" {
 			var tenantID string
-			err := db.QueryRow(r.Context(), `
+			err = db.QueryRow(ctx, `
 				SELECT st.tenant_id
 				FROM statements st
 				JOIN lrs l ON l.id = st.tenant_id
@@ -100,25 +108,65 @@ func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Han
 				ORDER BY st.stored_at DESC
 				LIMIT 1
 			`, id, orgSlug).Scan(&tenantID)
-			if err == pgx.ErrNoRows {
-				writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
+			if err == nil {
+				tenant = store.TenantID(tenantID)
+			} else if err != pgx.ErrNoRows {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup failed"})
 				return
+			} else {
+				rows, qerr := db.Query(ctx, `
+					SELECT l.id::text, COALESCE(l.data_store_id::text, '')
+					FROM lrs l
+					JOIN projects p ON p.id = l.project_id
+					JOIN organisations o ON o.id = p.org_id
+					WHERE o.slug = $1
+				`, orgSlug)
+				if qerr != nil {
+					writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup failed"})
+					return
+				}
+				defer rows.Close()
+				for rows.Next() {
+					var lrsID, dataStoreID string
+					if err := rows.Scan(&lrsID, &dataStoreID); err != nil {
+						writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup failed"})
+						return
+					}
+					if !svc.HasExternalStore(dataStoreID) {
+						continue
+					}
+					found, ferr := svc.GetStatementByID(lrs.WithDataStoreID(ctx, dataStoreID), store.TenantID(lrsID), store.StatementID(id))
+					if ferr == nil {
+						st = found
+						tenant = store.TenantID(lrsID)
+						ctx = lrs.WithDataStoreID(ctx, dataStoreID)
+						break
+					}
+					if !errors.Is(ferr, store.ErrNotFound) {
+						writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup failed"})
+						return
+					}
+				}
+				if err := rows.Err(); err != nil {
+					writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup failed"})
+					return
+				}
+				if tenant == "" {
+					writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
+					return
+				}
 			}
+		}
+		if st.ID == "" {
+			st, err = svc.GetStatementByID(ctx, tenant, store.StatementID(id))
 			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
+					return
+				}
 				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup failed"})
 				return
 			}
-			tenant = store.TenantID(tenantID)
-		}
-
-		st, err := svc.GetStatementByID(r.Context(), tenant, store.StatementID(id))
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
-				return
-			}
-			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "lookup failed"})
-			return
 		}
 
 		var ts *string
@@ -130,26 +178,20 @@ func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Han
 		var md statementDetailMetadataResponse
 		if err := db.QueryRow(r.Context(), `
 			SELECT
-				st.tenant_id,
 				l.id::text, l.name,
 				p.id::text, p.slug, p.name,
 				o.id::text, o.slug, o.name,
-				ds.id::text, ds.name, ds.database_type,
-				c.id::text, c.name
-			FROM statements st
-			JOIN lrs l ON l.id = st.tenant_id
+				ds.id::text, ds.name, ds.database_type
+			FROM lrs l
 			JOIN projects p ON p.id = l.project_id
 			JOIN organisations o ON o.id = p.org_id
 			JOIN data_stores ds ON ds.id = l.data_store_id
-			LEFT JOIN clients c ON c.id = st.client_id
-			WHERE st.tenant_id = $1 AND st.id = $2 AND o.slug = $3
-		`, st.TenantID, st.ID, orgSlug).Scan(
-			&md.TenantID,
+			WHERE l.id = $1::uuid AND o.slug = $2
+		`, st.TenantID, orgSlug).Scan(
 			&md.LRSID, &md.LRSName,
 			&md.ProjectID, &md.ProjectSlug, &md.ProjectName,
 			&md.OrganizationID, &md.OrganizationSlug, &md.OrganizationName,
 			&md.DataStoreID, &md.DataStoreName, &md.DataStoreType,
-			&md.ClientID, &md.ClientName,
 		); err != nil {
 			if err == pgx.ErrNoRows {
 				writeJSON(w, http.StatusNotFound, errorResponse{Error: "not found"})
@@ -157,6 +199,14 @@ func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Han
 			}
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "metadata lookup failed"})
 			return
+		}
+		md.TenantID = string(st.TenantID)
+		if st.ClientID != nil && *st.ClientID != "" {
+			var clientID, clientName string
+			if err := db.QueryRow(r.Context(), `SELECT id::text, name FROM clients WHERE id = $1::uuid`, *st.ClientID).Scan(&clientID, &clientName); err == nil {
+				md.ClientID = &clientID
+				md.ClientName = &clientName
+			}
 		}
 
 		resp := statementDetailResponse{
