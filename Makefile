@@ -3,6 +3,7 @@
 # Notes:
 # - Go API lives in apps/api
 # - Web UI lives in apps/web
+# - Landing page lives in apps/landing
 # - Docker Compose (optional) for local infra
 
 SHELL := /bin/bash
@@ -10,6 +11,7 @@ SHELL := /bin/bash
 ROOT := $(CURDIR)
 API_DIR := $(ROOT)/apps/api
 WEB_DIR := $(ROOT)/apps/web
+LANDING_DIR := $(ROOT)/apps/landing
 MIGRATIONS_DIR := $(ROOT)/migrations
 
 GO ?= go
@@ -44,12 +46,13 @@ PG_DSN ?= $(DEV_PG_DSN)
 # Command reference. Commands are parsed from MAKECMDGOALS so that grouped
 # forms such as `make dev api` can be used with GNU Make.
 # HELP: admin create | Create/update an admin user (EMAIL=... PASSWORD=... ORG=... ROLE=owner)
-# HELP: build | Build API binary + Web bundle
+# HELP: build | Build API binary, Web bundle, and landing page
 # HELP: build api | Build API binary (apps/api/bin/api)
+# HELP: build landing | Build landing page bundle (Vite build)
 # HELP: build web | Build Web bundle (Vite build)
 # HELP: clean | Clean build artifacts
 # HELP: user create | Create/update a user (EMAIL=... PASSWORD=... [ORG=default] [ROLE=owner])
-# HELP: deps | Install dependencies (Go + Web)
+# HELP: deps | Install dependencies (Go + Web + Landing)
 # HELP: dev | Start the complete dev stack (Postgres, API, and Web)
 # HELP: dev api | Run API locally with hot reload via air (requires PG_DSN)
 # HELP: dev build | Rebuild dev images (e.g. after Dockerfile.dev changes)
@@ -60,6 +63,7 @@ PG_DSN ?= $(DEV_PG_DSN)
 # HELP: dev restart api | Restart only the API container (triggers air rebuild)
 # HELP: dev up | Start dev stack (API live reload via air, Vite HMR)
 # HELP: dev up detached | Start dev stack detached
+# HELP: dev landing | Run landing page locally (pnpm dev, port 5175)
 # HELP: dev web | Run Web locally (pnpm dev)
 # HELP: docker build | Build all docker images (production)
 # HELP: docker push | Push images to registry (set REGISTRY=... first)
@@ -86,8 +90,9 @@ PG_DSN ?= $(DEV_PG_DSN)
 # HELP: tidy | Go: go mod tidy
 # HELP: up | Start all services (production, detached)
 # HELP: up build | Build images and start all services (production)
+# HELP: xapi conformance | Run the ADL LRS conformance suite (AUTH=key:secret VERSION=1.0.3|2.0.0)
 # HELP: xapi get | GET a statement by STATEMENT_ID
-# HELP: xapi post | POST a test statement batch, prints returned IDs
+# HELP: xapi post | POST a test statement, prints returned IDs
 # HELP: xapi smoke | POST then GET same statement id
 
 .PHONY: help
@@ -99,6 +104,7 @@ help: ## Show available targets
 			awk -F '\t' '{printf "  \033[36m%-32s\033[0m %s\n", "make " $$1, $$2}'; \
 		printf "\nDevelopment endpoints:\n"; \
 		printf "  Web         http://localhost:%s  (DEV_WEB_PORT)\n" "$(DEV_WEB_PORT)"; \
+		printf "  Landing     http://localhost:5175       (make dev landing)\n"; \
 		printf "  API         http://localhost:%s  (DEV_API_PORT)\n" "$(DEV_API_PORT)"; \
 		printf "  PostgreSQL  localhost:%s         (DEV_POSTGRES_PORT)\n" "$(DEV_POSTGRES_PORT)"; \
 		printf "  MongoDB     localhost:27017        (make mongo up)\n"; \
@@ -109,7 +115,7 @@ help: ## Show available targets
 	}
 
 COMMAND_GOALS := $(strip $(MAKECMDGOALS))
-COMMAND_WORDS := admin api build clean create deps dev detached docker down fmt get help install lint logs migrate mongo pg post psql push restart s3 smoke test tidy up user volumes web xapi
+COMMAND_WORDS := admin api build clean conformance create deps dev detached docker down fmt get help install landing lint logs migrate mongo pg post psql push restart s3 smoke test tidy up user volumes web xapi
 
 .PHONY: $(COMMAND_WORDS) __dispatch
 $(filter-out help,$(COMMAND_WORDS)): __dispatch
@@ -121,6 +127,7 @@ __dispatch:
 		"admin create") $(MAKE) --no-print-directory __admin_create ;; \
 		"build") $(MAKE) --no-print-directory __build ;; \
 		"build api") $(MAKE) --no-print-directory __build_api ;; \
+		"build landing") $(MAKE) --no-print-directory __build_landing ;; \
 		"build web") $(MAKE) --no-print-directory __build_web ;; \
 		"clean") $(MAKE) --no-print-directory __clean ;; \
 		"deps") $(MAKE) --no-print-directory __deps ;; \
@@ -135,6 +142,7 @@ __dispatch:
 		"dev restart api") $(MAKE) --no-print-directory __dev_restart_api ;; \
 		"dev up") $(MAKE) --no-print-directory __dev_up ;; \
 		"dev up detached") $(MAKE) --no-print-directory __dev_up_detached ;; \
+		"dev landing") $(MAKE) --no-print-directory __dev_landing ;; \
 		"dev web") $(MAKE) --no-print-directory __dev_web ;; \
 		"docker build") $(MAKE) --no-print-directory __docker_build ;; \
 		"docker push") $(MAKE) --no-print-directory __docker_push ;; \
@@ -160,6 +168,7 @@ __dispatch:
 		"up") $(MAKE) --no-print-directory __up ;; \
 		"up build") $(MAKE) --no-print-directory __up_build ;; \
 		"user create") $(MAKE) --no-print-directory __user_create ;; \
+		"xapi conformance") $(MAKE) --no-print-directory __xapi_conformance ;; \
 		"xapi get") $(MAKE) --no-print-directory __xapi_get ;; \
 		"xapi post") $(MAKE) --no-print-directory __xapi_post ;; \
 		"xapi smoke") $(MAKE) --no-print-directory __xapi_smoke ;; \
@@ -175,6 +184,8 @@ __deps:
 	@cd $(API_DIR) && $(GO) mod download
 	@echo "==> Web deps"
 	@cd $(WEB_DIR) && $(PNPM) install
+	@echo "==> Landing deps"
+	@cd $(LANDING_DIR) && $(PNPM) install
 
 .PHONY: __tidy
 __tidy:
@@ -217,6 +228,7 @@ __install:
 	@echo "  Full stack:  make dev"
 	@echo "  API on host: make dev api    http://localhost:8080"
 	@echo "  Web on host: make dev web    http://localhost:5173"
+	@echo "  Landing:     make dev landing http://localhost:5175"
 	@echo "  First user:  make user create EMAIL=you@example.com PASSWORD=secret ROLE=owner"
 
 # -----------------------
@@ -235,6 +247,8 @@ __lint:
 	@cd $(API_DIR) && $(GO) vet ./...
 	@echo "==> Web lint (if configured)"
 	@cd $(WEB_DIR) && $(PNPM) run -s lint || true
+	@echo "==> Landing lint"
+	@cd $(LANDING_DIR) && $(PNPM) run -s lint
 
 # -----------------------
 # Testing
@@ -258,7 +272,7 @@ __test_web:
 # Build
 # -----------------------
 .PHONY: __build
-__build: __build_api __build_web
+__build: __build_api __build_web __build_landing
 
 .PHONY: __build_api
 __build_api:
@@ -268,6 +282,10 @@ __build_api:
 .PHONY: __build_web
 __build_web:
 	@cd $(WEB_DIR) && $(PNPM) run build
+
+.PHONY: __build_landing
+__build_landing:
+	@cd $(LANDING_DIR) && $(PNPM) run build
 
 # -----------------------
 # Dev / Run
@@ -285,6 +303,10 @@ __dev_api:
 .PHONY: __dev_web
 __dev_web:
 	@cd $(WEB_DIR) && $(PNPM) dev
+
+.PHONY: __dev_landing
+__dev_landing:
+	@cd $(LANDING_DIR) && $(PNPM) dev
 
 # -----------------------
 # Docker / Compose — Production
@@ -396,6 +418,8 @@ __clean:
 	@rm -rf $(API_DIR)/bin
 	@rm -rf $(WEB_DIR)/dist
 	@rm -rf $(WEB_DIR)/node_modules/.vite
+	@rm -rf $(LANDING_DIR)/dist
+	@rm -rf $(LANDING_DIR)/node_modules/.vite
 
 .PHONY: __pg_up
 __pg_up:
@@ -442,7 +466,7 @@ __xapi_post:
 		-H "Content-Type: application/json" \
 		-H "X-Experience-API-Version: 1.0.3" \
 		-X POST "$(BASE_URL)/statements" \
-		-d '{"statements":[{"id":"$(STATEMENT_ID)","actor":{"mbox":"mailto:sergej@example.org"},"verb":{"id":"http://adlnet.gov/expapi/verbs/experienced","display":{"en-US":"experienced"}},"object":{"id":"https://example.org/activity/intro"}}]}'
+		-d '{"id":"$(STATEMENT_ID)","actor":{"mbox":"mailto:sergej@example.org"},"verb":{"id":"http://adlnet.gov/expapi/verbs/experienced","display":{"en-US":"experienced"}},"object":{"id":"https://example.org/activity/intro"}}'
 	@echo ""
 
 .PHONY: __xapi_get
@@ -456,6 +480,13 @@ __xapi_get:
 __xapi_smoke:
 	@$(MAKE) --no-print-directory __xapi_post STATEMENT_ID=$(STATEMENT_ID)
 	@$(MAKE) --no-print-directory __xapi_get  STATEMENT_ID=$(STATEMENT_ID)
+
+.PHONY: __xapi_conformance
+__xapi_conformance:
+	@mkdir -p tmp/conformance
+	@ENDPOINT="$${ENDPOINT:-http://127.0.0.1:$(DEV_API_PORT)/xapi}" \
+		AUTH="$(AUTH)" VERSION="$(or $(VERSION),1.0.3)" \
+		bash scripts/xapi-conformance.sh
 
 .PHONY: __admin_create
 __admin_create:

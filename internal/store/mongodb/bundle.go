@@ -42,6 +42,7 @@ func NewStoreBundle(ctx context.Context, cfg store.DataStoreConfig) (store.Store
 		AgentProfiles:    NewAgentProfileStore(db),
 		ActivityProfiles: NewActivityProfileStore(db),
 		Attachments:      NewAttachmentStore(db),
+		Activities:       NewActivityStore(db),
 		Lifecycle:        &clientLifecycle{client: client},
 		DatabaseType:     "mongodb",
 		Capabilities:     store.ExternalCapabilities(),

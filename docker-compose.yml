@@ -40,5 +40,15 @@ services:
     depends_on: [api]
     restart: unless-stopped
 
+  landing:
+    build:
+      context: ./apps/landing
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_URL: ${VITE_APP_URL:-https://app.lrsolid.cloud}
+        VITE_GITHUB_URL: ${VITE_GITHUB_URL:-https://github.com/OmiLAXR-Ecosystem/LRSolid}
+    ports: ["8081:80"]
+    restart: unless-stopped
+
 volumes:
   postgres_data:

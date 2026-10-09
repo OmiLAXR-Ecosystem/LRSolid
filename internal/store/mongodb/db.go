@@ -15,6 +15,7 @@ const (
 	colAgentProfiles    = "agent_profiles"
 	colActivityProfiles = "activity_profiles"
 	colAttachmentMeta   = "attachment_meta"
+	colActivities       = "activities"
 )
 
 // Open connects to MongoDB and returns the client plus the selected database.

@@ -27,8 +27,7 @@ func (s *StateStore) PutState(ctx context.Context, key store.StateKey, content [
 	// If-Match: update only if existing etag matches
 	if ifMatch != nil {
 		ct := nullableString(contentType)
-		var updated int64
-		err := s.db.QueryRow(ctx, `
+		tag, err := s.db.Exec(ctx, `
 			UPDATE state_docs
 			SET content=$1, content_type=$2, etag=$3, updated_at=$4
 			WHERE tenant_id=$5 AND activity_id=$6 AND agent_key=$7
@@ -37,13 +36,12 @@ func (s *StateStore) PutState(ctx context.Context, key store.StateKey, content [
 			  AND etag=$10
 		`, content, ct, newETag, now,
 			key.TenantID, key.ActivityID, key.AgentKey, key.Registration, key.StateID, *ifMatch,
-		).Scan(&updated)
-		if err == pgx.ErrNoRows {
-			// mismatch or missing
-			return "", store.ErrPreconditionFailed
-		}
+		)
 		if err != nil {
 			return "", err
+		}
+		if tag.RowsAffected() == 0 {
+			return "", store.ErrPreconditionFailed
 		}
 		return store.ETag(newETag), nil
 	}

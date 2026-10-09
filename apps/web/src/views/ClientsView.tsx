@@ -19,12 +19,37 @@ import { LimitsButton } from "../components/limits/LimitsPanel";
 type ScopeState = {
   statementsRead: boolean;
   statementsWrite: boolean;
+  statementsReadMine: boolean;
+  state: boolean;
+  profile: boolean;
+  define: boolean;
+  allRead: boolean;
+  all: boolean;
 };
 
 const emptyScopes: ScopeState = {
   statementsRead: true,
   statementsWrite: true,
+  statementsReadMine: false,
+  state: false,
+  profile: false,
+  define: false,
+  allRead: false,
+  all: false,
 };
+
+const scopeBadges: { key: string; label: string; className: string }[] = [
+  { key: "statements:read", label: "read", className: "bg-blue-50 text-blue-700 ring-blue-200" },
+  { key: "statements/read", label: "statements/read", className: "bg-blue-50 text-blue-700 ring-blue-200" },
+  { key: "statements:write", label: "write", className: "bg-teal-50 text-teal-700 ring-teal-200" },
+  { key: "statements/write", label: "statements/write", className: "bg-teal-50 text-teal-700 ring-teal-200" },
+  { key: "statements/read/mine", label: "read/mine", className: "bg-sky-50 text-sky-700 ring-sky-200" },
+  { key: "state", label: "state", className: "bg-amber-50 text-amber-700 ring-amber-200" },
+  { key: "profile", label: "profile", className: "bg-violet-50 text-violet-700 ring-violet-200" },
+  { key: "define", label: "define", className: "bg-orange-50 text-orange-700 ring-orange-200" },
+  { key: "all/read", label: "all/read", className: "bg-slate-50 text-slate-700 ring-slate-200" },
+  { key: "all", label: "all", className: "bg-slate-900 text-white ring-slate-900" },
+];
 
 function toLocalDateString(value?: string | null): string {
   if (!value) return "";
@@ -287,7 +312,15 @@ export function ClientsView() {
         userIds: selectedUserIds,
         scopes: {
           "statements:read": scopes.statementsRead,
+          "statements/read": scopes.statementsRead,
           "statements:write": scopes.statementsWrite,
+          "statements/write": scopes.statementsWrite,
+          "statements/read/mine": scopes.statementsReadMine,
+          state: scopes.state,
+          profile: scopes.profile,
+          define: scopes.define,
+          "all/read": scopes.allRead,
+          all: scopes.all,
         },
       });
       setCreated(result);
@@ -376,12 +409,14 @@ export function ClientsView() {
                   <td className="px-4 py-3 text-slate-600 font-mono text-xs">{row.keyId}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1 flex-wrap">
-                      {row.scopes["statements:read"] && (
-                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200">read</span>
-                      )}
-                      {row.scopes["statements:write"] && (
-                        <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 ring-1 ring-teal-200">write</span>
-                      )}
+                      {scopeBadges.filter((badge) => {
+                        if (!row.scopes[badge.key]) return false;
+                        if (badge.key === "statements:read" && row.scopes["statements/read"]) return false;
+                        if (badge.key === "statements:write" && row.scopes["statements/write"]) return false;
+                        return true;
+                      }).map((badge) => (
+                        <span key={badge.key} className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${badge.className}`}>{badge.label}</span>
+                      ))}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{row.userIds.length === 0 ? "everybody" : row.userIds.length}</td>
@@ -489,7 +524,7 @@ export function ClientsView() {
                         checked={scopes.statementsRead}
                         onChange={(e) => setScopes((s) => ({ ...s, statementsRead: e.target.checked }))}
                       />
-                      statements:read
+                      statements/read
                     </label>
                     <label className="flex items-center gap-2">
                       <input
@@ -497,7 +532,55 @@ export function ClientsView() {
                         checked={scopes.statementsWrite}
                         onChange={(e) => setScopes((s) => ({ ...s, statementsWrite: e.target.checked }))}
                       />
-                      statements:write
+                      statements/write
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={scopes.statementsReadMine}
+                        onChange={(e) => setScopes((s) => ({ ...s, statementsReadMine: e.target.checked }))}
+                      />
+                      statements/read/mine
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={scopes.state}
+                        onChange={(e) => setScopes((s) => ({ ...s, state: e.target.checked }))}
+                      />
+                      state
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={scopes.profile}
+                        onChange={(e) => setScopes((s) => ({ ...s, profile: e.target.checked }))}
+                      />
+                      profile
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={scopes.define}
+                        onChange={(e) => setScopes((s) => ({ ...s, define: e.target.checked }))}
+                      />
+                      define
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={scopes.allRead}
+                        onChange={(e) => setScopes((s) => ({ ...s, allRead: e.target.checked }))}
+                      />
+                      all/read
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={scopes.all}
+                        onChange={(e) => setScopes((s) => ({ ...s, all: e.target.checked }))}
+                      />
+                      all
                     </label>
                   </div>
                 </div>

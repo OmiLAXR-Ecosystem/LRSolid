@@ -71,35 +71,29 @@ func putProfile(ctx context.Context, db *pgxpool.Pool, table string, tenant stor
 
 	// If-Match update
 	if ifMatch != nil {
-		var updated int64
 		var q string
+		var args []any
 		if table == "agent_profiles" {
 			q = `
 				UPDATE agent_profiles
 				SET content=$1, content_type=$2, etag=$3, updated_at=$4
 				WHERE tenant_id=$5 AND agent_key=$6 AND profile_id=$7 AND etag=$8
 			`
-			err := db.QueryRow(ctx, q, content, ct, newETag, now, tenant, agentKey, profileID, *ifMatch).Scan(&updated)
-			if err == pgx.ErrNoRows {
-				return "", store.ErrPreconditionFailed
-			}
-			if err != nil {
-				return "", err
-			}
-			return store.ETag(newETag), nil
+			args = []any{content, ct, newETag, now, tenant, agentKey, profileID, *ifMatch}
+		} else {
+			q = `
+				UPDATE activity_profiles
+				SET content=$1, content_type=$2, etag=$3, updated_at=$4
+				WHERE tenant_id=$5 AND activity_id=$6 AND profile_id=$7 AND etag=$8
+			`
+			args = []any{content, ct, newETag, now, tenant, activityID, profileID, *ifMatch}
 		}
-
-		q = `
-			UPDATE activity_profiles
-			SET content=$1, content_type=$2, etag=$3, updated_at=$4
-			WHERE tenant_id=$5 AND activity_id=$6 AND profile_id=$7 AND etag=$8
-		`
-		err := db.QueryRow(ctx, q, content, ct, newETag, now, tenant, activityID, profileID, *ifMatch).Scan(&updated)
-		if err == pgx.ErrNoRows {
-			return "", store.ErrPreconditionFailed
-		}
+		tag, err := db.Exec(ctx, q, args...)
 		if err != nil {
 			return "", err
+		}
+		if tag.RowsAffected() == 0 {
+			return "", store.ErrPreconditionFailed
 		}
 		return store.ETag(newETag), nil
 	}

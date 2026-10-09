@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-LRSolid is a self-hosted Learning Record Store (LRS) compliant with xAPI 1.0.3. Monorepo with a Go backend (`apps/api`) and a React 19 admin frontend (`apps/web`), backed by PostgreSQL.
+LRSolid is a self-hosted Learning Record Store (LRS) that serves xAPI 1.0.3 and 2.0. Monorepo with a Go backend (`apps/api`) and a React 19 admin frontend (`apps/web`), backed by PostgreSQL.
 
 ```
 Browser (React SPA) → Go HTTP API (Chi, :8080) → PostgreSQL
@@ -34,6 +34,7 @@ make admin EMAIL=you@example.com PASSWORD=secret [ORG=default]
 make owner EMAIL=you@example.com PASSWORD=secret [ORG=default]
 make user EMAIL=you@example.com PASSWORD=secret [ORG=default]
 make xapi smoke        # POST + GET a test xAPI statement (needs AUTH=keyId:secret)
+make xapi conformance  # ADL conformance suite (AUTH=key:secret VERSION=1.0.3|2.0.0)
 ```
 
 Single-package/single-test Go runs (from repo root, module is `github.com/SGoerzen/LRSolid`):
@@ -54,6 +55,10 @@ Web app lives in `apps/web`; run `pnpm <script>` from there (or `cd apps/web && 
 `Organisation → Project → LRS`. Each LRS instance is its own xAPI tenant (`store.TenantID` == LRS ID). Roles are granted independently at each level via `org_memberships`, `project_memberships`, and `lrs_memberships` tables (`owner/admin/member/viewer` at org/project, `admin/writer/reader` at LRS level). LRS-level membership is optional and falls back to the project-level role. See `README.md` "Role System" for the full matrix.
 
 In addition to user roles, **Clients** (`internal/models.Client`) are machine credentials scoped to a project and optionally a single LRS, authenticated via HTTP Basic (`key_id:secret`) and gated by a JSON `scopes` map (e.g. `statements:write`).
+
+### xAPI resources
+
+Spec logic that does not touch HTTP or a database lives in `internal/xapi` (version negotiation, validation, agent keys, statement preparation, formats, JWS). HTTP handlers are `internal/httpapi/statements.go`, `xapi_documents.go`, `xapi_activities.go`, `xapi_version.go`, and `xapi_alternate.go`. `X-Experience-API-Version` is required unless `XAPI_LEGACY_COMPAT=true`, which also restores form bodies, the `{statements:[...]}` wrapper, and a `cursor` field beside `more`. Document writes use `409` when an existing document has no `If-Match` / `If-None-Match`, and `412` when the precondition fails. Attachment bytes go to `XAPI_ATTACHMENT_DIR`.
 
 ### Two auth mechanisms, two route groups
 

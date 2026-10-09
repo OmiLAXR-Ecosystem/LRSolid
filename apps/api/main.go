@@ -108,6 +108,17 @@ func main() {
 	// Default fallback: the control-plane Postgres (no connection_string needed).
 	fallbackStmtStore := pgstore.NewStatementStore(db)
 	svc := lrs.NewService(storeRegistry, fallbackStmtStore, statsrollup.Counters{DB: db}, limits.Checker{DB: db})
+	svc.UseControlPlane(store.StoreBundle{
+		Statements:       fallbackStmtStore,
+		States:           pgstore.NewStateStore(db),
+		AgentProfiles:    pgstore.NewAgentProfileStore(db),
+		ActivityProfiles: pgstore.NewActivityProfileStore(db),
+		Attachments:      pgstore.NewAttachmentStore(db),
+		Activities:       pgstore.NewActivityStore(db),
+		DatabaseType:     "postgres",
+		Capabilities:     store.ControlPlaneCapabilities(),
+	})
+	svc.SetAttachmentDir(cfg.XAPIAttachmentDir)
 
 	registry := plugins.Global
 	builtin.Register(registry)

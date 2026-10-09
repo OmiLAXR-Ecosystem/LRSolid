@@ -89,4 +89,44 @@ CREATE TABLE IF NOT EXISTS attachment_meta (
     created_at    timestamptz NOT NULL,
     PRIMARY KEY (tenant_id, sha256)
 );
+
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS activity_at timestamptz NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS actor_type text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS actor_mbox_sha1sum text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS actor_openid text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS actor_account_home text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS actor_account_name text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS actor_sha256 text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS object_type text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS activity_type text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS registration text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS context_platform text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS context_parent_ids text[] NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS context_group_ids text[] NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS context_category_ids text[] NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS result_completion boolean NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS result_success boolean NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS result_score_scaled numeric(7,4) NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS result_duration text NULL;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS voided boolean NOT NULL DEFAULT false;
+ALTER TABLE statements ADD COLUMN IF NOT EXISTS activity_ids text[] NULL;
+
+CREATE TABLE IF NOT EXISTS statement_agents (
+    id           bigserial   PRIMARY KEY,
+    tenant_id    text        NOT NULL,
+    statement_id text        NOT NULL,
+    mbox         text NULL,
+    mbox_sha1sum text NULL,
+    openid       text NULL,
+    account_home text NULL,
+    account_name text NULL
+);
+
+CREATE TABLE IF NOT EXISTS activities (
+    tenant_id   text        NOT NULL,
+    id          text        NOT NULL,
+    definition  jsonb       NOT NULL,
+    updated_at  timestamptz NOT NULL,
+    PRIMARY KEY (tenant_id, id)
+);
 `

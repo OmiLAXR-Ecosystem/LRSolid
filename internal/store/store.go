@@ -54,7 +54,38 @@ type Statement struct {
 
 	Registration *string // UUID string (optional)
 
+	ActorType          *string
+	ActorMboxSHA1Sum   *string
+	ActorOpenID        *string
+	ActorAccountHome   *string
+	ActorAccountName   *string
+	ObjectType         *string
+	ActivityType       *string
+	ActivityIDs        []string
+	ContextPlatform    *string
+	ContextParentIDs   []string
+	ContextGroupIDs    []string
+	ContextCategoryIDs []string
+	ResultCompletion   *bool
+	ResultSuccess      *bool
+	ResultScoreScaled  *float64
+	ResultDuration     *string
+	Voided             bool
+	// VoidsID is set when this statement voids another statement.
+	VoidsID *StatementID
+	// Agents are the IFIs denormalized for related-agent queries.
+	Agents []AgentRef
+
 	RawJSON []byte
+}
+
+// AgentRef is one inverse functional identifier denormalized from a statement.
+type AgentRef struct {
+	Mbox        *string
+	MboxSHA1Sum *string
+	OpenID      *string
+	AccountHome *string
+	AccountName *string
 }
 
 // StatementFilter models the canonical query semantics used by the core.
@@ -70,6 +101,21 @@ type StatementFilter struct {
 	VerbID       *string
 	ObjectID     *string
 	Registration *string
+
+	// Agent matches the statement actor. With RelatedAgents it also matches
+	// denormalized IFIs (group members, object, instructor, team, context agents).
+	Agent             *AgentRef
+	RelatedAgents     bool
+	RelatedActivities bool
+
+	// StatementID returns that statement when it is not voided.
+	StatementID *string
+	// VoidedStatementID returns that statement only when it is voided.
+	VoidedStatementID *string
+	// IncludeVoided keeps voided statements in a normal query. Single-id lookups ignore it.
+	IncludeVoided bool
+	// ClientID restricts the query to statements stored for that API client.
+	ClientID *string
 
 	// StoredSince/StoredUntil are applied to StoredAt.
 	StoredSince *time.Time
@@ -132,6 +178,7 @@ type StoreBundle struct {
 	AgentProfiles    AgentProfileStore
 	ActivityProfiles ActivityProfileStore
 	Attachments      AttachmentStore
+	Activities       ActivityStore
 	Lifecycle        Lifecycle
 	DatabaseType     string
 	Capabilities     Capabilities
@@ -149,8 +196,20 @@ type StatementStore interface {
 	// Ordering MUST be by (StoredAt, ID) with Ascending controlling direction.
 	GetStatements(ctx context.Context, f StatementFilter) (StatementPage, error)
 
-	// GetStatementByID returns a single statement by id.
+	// GetStatementByID returns a single statement by id, including voided statements.
 	GetStatementByID(ctx context.Context, tenant TenantID, id StatementID) (Statement, error)
+
+	// MarkVoided sets voided on the target statement. A missing target is not an error.
+	MarkVoided(ctx context.Context, tenant TenantID, id StatementID) error
+
+	// HasVoidingStatement reports whether a stored voiding statement targets id.
+	HasVoidingStatement(ctx context.Context, tenant TenantID, id StatementID) (bool, error)
+}
+
+// ActivityStore keeps the canonical definition for an activity id.
+type ActivityStore interface {
+	PutActivity(ctx context.Context, tenant TenantID, id string, definition []byte) error
+	GetActivity(ctx context.Context, tenant TenantID, id string) ([]byte, bool, error)
 }
 
 // ---- xAPI State API ----

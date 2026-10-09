@@ -24,6 +24,8 @@ export type StatementDetail = {
     actorMbox?: string | null;
     verbId?: string | null;
     objectId?: string | null;
+    version?: string | null;
+    authority?: string | null;
     metadata: {
         tenantId: string;
         lrsId: string;

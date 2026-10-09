@@ -1,12 +1,12 @@
 # LRSolid
 
-**LRSolid** is an open-source Learning Record Store (LRS) compliant with the [xAPI 1.0.3](https://github.com/adlnet/xAPI-Spec) specification. It is designed for self-hosting in university and enterprise environments, with a focus on performance, analytics, and extensibility.
+**LRSolid** is an open-source Learning Record Store (LRS) that speaks [xAPI 1.0.3 and 2.0](https://github.com/adlnet/xAPI-Spec). It is designed for self-hosting in university and enterprise environments, with a focus on performance, analytics, and extensibility.
 
 ---
 
 ## Features
 
-- xAPI 1.0.3 statement ingestion and querying
+- xAPI 1.0.3 and 2.0 statement, state, profile, activity, agent, and attachment resources
 - State, Agent Profile, and Activity Profile APIs
 - Multi-tenant architecture (Organisations → Projects → LRS)
 - JWT-based authentication via httpOnly session cookies
@@ -31,12 +31,26 @@ Browser (React SPA)
        +---> [planned] Kafka → ClickHouse / TimescaleDB
 ```
 
-The monorepo contains two apps:
+The monorepo contains three apps:
 
 | Path | Description |
 |------|-------------|
 | `apps/api/` | Go REST + xAPI backend |
 | `apps/web/` | React 19 admin frontend (Vite, Tailwind) |
+| `apps/landing/` | Static marketing site for lrsolid.cloud (Vite, Tailwind) |
+
+## Hosting
+
+The public site and the product use two hostnames:
+
+| Host | What it serves |
+|------|----------------|
+| `lrsolid.cloud` | Landing page (`apps/landing`) |
+| `app.lrsolid.cloud` | Admin UI, `/api`, `/xapi`, and `/docs` |
+
+Learning tools post statements to `https://app.lrsolid.cloud/xapi/statements`. The landing page links to the app through `VITE_APP_URL` (default `https://app.lrsolid.cloud`), which is read at build time.
+
+`docker compose up` publishes the admin UI on port 80, the API on 8080, and the landing page on 8081. An example Caddy config that terminates TLS and routes by host is in [infra/caddy/Caddyfile](infra/caddy/Caddyfile). Run the landing page locally with `make dev landing` at `http://localhost:5175`.
 
 ---
 
@@ -103,7 +117,7 @@ In addition to user roles, **Clients** are machine auth entities (xAPI Basic Aut
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/SGoerzen/LRSolid.git
+git clone https://github.com/OmiLAXR-Ecosystem/LRSolid.git
 cd LRSolid
 ```
 
@@ -248,8 +262,17 @@ Leave the SP entity ID empty so it becomes `{APP_URL}/api/auth/saml/shibboleth/m
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/xapi/statements` | Ingest a statement or batch of statements (requires client scope `statements:write`) |
-| `GET` | `/xapi/statements` | Query statements (requires client scope `statements:read`) |
+| `GET` | `/xapi/about` | Supported versions (`1.0.3`, `2.0.0`). No authentication |
+| `POST` | `/xapi/statements` | Store a statement or an array of statements (`statements/write`) |
+| `PUT` | `/xapi/statements?statementId=` | Store one statement (`statements/write`) |
+| `GET` | `/xapi/statements` | Query statements (`statements/read`, or the caller's own statements for `statements/read/mine`) |
+| `GET`/`PUT`/`POST`/`DELETE` | `/xapi/activities/state` | Activity state (`state`) |
+| `GET`/`PUT`/`POST`/`DELETE` | `/xapi/activities/profile` | Activity profile (`profile`) |
+| `GET`/`PUT`/`POST`/`DELETE` | `/xapi/agents/profile` | Agent profile (`profile`) |
+| `GET` | `/xapi/activities?activityId=` | Canonical activity |
+| `GET` | `/xapi/agents?agent=` | Person object for an agent |
+
+Requests need `X-Experience-API-Version: 1.0.3` or `2.0.0`. `XAPI_LEGACY_COMPAT=true` also accepts calls that omit the header. `statements:read` and `statements:write` remain aliases of the spec scope names. See [docs/adr-0007.md](docs/adr-0007.md).
 
 ### REST
 
@@ -303,6 +326,7 @@ Migrations live in `migrations/` and are managed with `golang-migrate`.
 | `000008` | Org and project memberships (with role CHECK constraints) |
 | `000009` | LRS instances and LRS memberships |
 | `000010` | Clients (xAPI Basic Auth with scopes) |
+| `000030` | Canonical activity definitions and `statements.activity_ids` |
 
 ```bash
 make migrate up    # Apply all pending migrations
@@ -340,6 +364,7 @@ make xapi smoke            POST + GET a test xAPI statement
 | [docs/adr-0002.md](docs/adr-0002.md) | xAPI statement schema: column extraction, denormalisation |
 | [docs/adr-0003.md](docs/adr-0003.md) | Analytics architecture: Kafka + ClickHouse/TimescaleDB |
 | [docs/adr-0006.md](docs/adr-0006.md) | PostgreSQL vs MongoDB for xAPI volume and structured filters |
+| [docs/adr-0007.md](docs/adr-0007.md) | xAPI 1.0.3 and 2.0 on one endpoint |
 | [docs/frontend-components.md](docs/frontend-components.md) | React component reference |
 
 ---

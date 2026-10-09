@@ -78,6 +78,37 @@ func RunStatementTests(t *testing.T, ss store.StatementStore) {
 	if len(page2.Statements) != 1 || page2.Statements[0].ID != "a" {
 		t.Fatalf("older page: %+v", page2.Statements)
 	}
+
+	verb := "http://adlnet.gov/expapi/verbs/voided"
+	objType := "StatementRef"
+	target := store.StatementID("a")
+	rawVoid := []byte(`{"id":"v","verb":{"id":"http://adlnet.gov/expapi/verbs/voided"},"object":{"objectType":"StatementRef","id":"a"}}`)
+	if _, err := ss.UpsertStatements(ctx, []store.Statement{{
+		TenantID: tenant, ID: "v", StoredAt: t1.Add(time.Minute), VerbID: &verb, ObjectID: strp("a"), ObjectType: &objType, VoidsID: &target, RawJSON: rawVoid,
+	}}); err != nil {
+		t.Fatalf("void insert: %v", err)
+	}
+	if err := ss.MarkVoided(ctx, tenant, "a"); err != nil {
+		t.Fatalf("mark voided: %v", err)
+	}
+	ok, err := ss.HasVoidingStatement(ctx, tenant, "a")
+	if err != nil || !ok {
+		t.Fatalf("has voiding = %v %v", ok, err)
+	}
+	page, err = ss.GetStatements(ctx, store.StatementFilter{TenantID: tenant, StatementID: strp("a"), Limit: 1})
+	if err != nil {
+		t.Fatalf("voided get: %v", err)
+	}
+	if len(page.Statements) != 0 {
+		t.Fatalf("voided statement still visible: %+v", page.Statements)
+	}
+	page, err = ss.GetStatements(ctx, store.StatementFilter{TenantID: tenant, VoidedStatementID: strp("a"), Limit: 1})
+	if err != nil {
+		t.Fatalf("voidedStatementId: %v", err)
+	}
+	if len(page.Statements) != 1 || page.Statements[0].ID != "a" {
+		t.Fatalf("voided lookup: %+v", page.Statements)
+	}
 }
 
 func strp(s string) *string { return &s }

@@ -163,6 +163,8 @@ export function StatementDetailModal({
               { label: "Data Store ID", value: detail.metadata.dataStoreId },
               { label: "Client", value: detail.metadata.clientName ?? "-" },
               { label: "Client ID", value: detail.metadata.clientId ?? "-" },
+              { label: "xAPI version", value: detail.version || "-" },
+              { label: "Authority", value: detail.authority || "-" },
           ]
         : [];
     const topLevelKeys = (() => {

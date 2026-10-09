@@ -19,6 +19,9 @@ type clientAuthContextKey string
 const xapiTenantKey clientAuthContextKey = "xapi_tenant"
 const xapiClientIDKey clientAuthContextKey = "xapi_client_id"
 const xapiDataStoreIDKey clientAuthContextKey = "xapi_data_store_id"
+const xapiKeyIDKey clientAuthContextKey = "xapi_key_id"
+const xapiMineOnlyKey clientAuthContextKey = "xapi_mine_only"
+const xapiDefineKey clientAuthContextKey = "xapi_define"
 
 func tenantFromRequest(ctx context.Context, cfg config.Config) string {
 	if tenant, ok := ctx.Value(xapiTenantKey).(string); ok && tenant != "" {
@@ -41,26 +44,110 @@ func clientIDFromRequest(ctx context.Context) *string {
 	return nil
 }
 
-func xapiScopeAllowed(scopes []byte, scope string) bool {
-	if len(scopes) == 0 {
-		return false
+func keyIDFromRequest(ctx context.Context) string {
+	if keyID, ok := ctx.Value(xapiKeyIDKey).(string); ok {
+		return keyID
 	}
-	var m map[string]bool
-	if err := json.Unmarshal(scopes, &m); err != nil {
-		return false
-	}
-	return m[scope]
+	return ""
 }
 
-func requiredStatementScope(method string) string {
-	switch strings.ToUpper(method) {
-	case http.MethodPost:
-		return "statements:write"
-	case http.MethodGet:
-		return "statements:read"
+func mineOnlyFromRequest(ctx context.Context) bool {
+	mine, _ := ctx.Value(xapiMineOnlyKey).(bool)
+	return mine
+}
+
+func defineFromRequest(ctx context.Context) bool {
+	ok, _ := ctx.Value(xapiDefineKey).(bool)
+	return ok
+}
+
+func xapiResource(path string) string {
+	p := strings.Trim(strings.TrimPrefix(path, "/xapi"), "/")
+	switch {
+	case p == "statements" || strings.HasPrefix(p, "statements/"):
+		return "statements"
+	case p == "activities/state":
+		return "state"
+	case p == "activities/profile" || p == "agents/profile":
+		return "profile"
+	case p == "activities":
+		return "activities"
+	case p == "agents":
+		return "agents"
 	default:
 		return ""
 	}
+}
+
+func scopeMap(scopes []byte) (map[string]bool, bool) {
+	if len(scopes) == 0 {
+		return nil, false
+	}
+	var m map[string]bool
+	if err := json.Unmarshal(scopes, &m); err != nil {
+		return nil, false
+	}
+	return m, true
+}
+
+func hasScope(m map[string]bool, names ...string) bool {
+	for _, name := range names {
+		if m[name] {
+			return true
+		}
+	}
+	return false
+}
+
+// xapiPermitted reports whether the scope map allows the method on a resource.
+// mineOnly is set when a statements read is limited to statements this client stored.
+func xapiPermitted(scopes []byte, method, path string) (bool, bool) {
+	m, ok := scopeMap(scopes)
+	if !ok {
+		return false, false
+	}
+	if m["all"] {
+		return true, false
+	}
+	read := method == http.MethodGet || method == http.MethodHead
+	switch xapiResource(path) {
+	case "statements":
+		if read {
+			if hasScope(m, "all/read", "statements/read", "statements:read") {
+				return true, false
+			}
+			if hasScope(m, "statements/read/mine", "statements/write", "statements:write") {
+				return true, true
+			}
+			return false, false
+		}
+		return hasScope(m, "statements/write", "statements:write"), false
+	case "state":
+		if read {
+			return hasScope(m, "state", "all/read"), false
+		}
+		return hasScope(m, "state"), false
+	case "profile":
+		if read {
+			return hasScope(m, "profile", "all/read"), false
+		}
+		return hasScope(m, "profile"), false
+	case "activities", "agents":
+		if !read {
+			return false, false
+		}
+		return hasScope(m, "all/read", "statements/read", "statements:read", "statements/read/mine", "statements/write", "statements:write", "state", "profile", "define"), false
+	default:
+		return false, false
+	}
+}
+
+func xapiCanDefine(scopes []byte) bool {
+	m, ok := scopeMap(scopes)
+	if !ok {
+		return false
+	}
+	return hasScope(m, "all", "define")
 }
 
 // XAPIClientAuth authenticates xAPI requests with HTTP Basic auth (key_id:secret).
@@ -74,17 +161,14 @@ func XAPIClientAuth(cfg config.Config, db *pgxpool.Pool) func(http.Handler) http
 				cookie, err := r.Cookie(auth.SessionCookie)
 				if err == nil && cookie != nil && cookie.Value != "" {
 					if _, err := auth.ValidateToken(cfg.JWTSecret, cookie.Value); err == nil {
-						next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), xapiTenantKey, cfg.DefaultTenant)))
+						ctx := context.WithValue(r.Context(), xapiTenantKey, cfg.DefaultTenant)
+						ctx = context.WithValue(ctx, xapiKeyIDKey, "session")
+						ctx = context.WithValue(ctx, xapiDefineKey, true)
+						next.ServeHTTP(w, r.WithContext(ctx))
 						return
 					}
 				}
 				writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "basic auth required"})
-				return
-			}
-
-			requiredScope := requiredStatementScope(r.Method)
-			if requiredScope == "" {
-				writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
 				return
 			}
 
@@ -112,7 +196,8 @@ func XAPIClientAuth(cfg config.Config, db *pgxpool.Pool) func(http.Handler) http
 				return
 			}
 
-			if !xapiScopeAllowed(scopesJSON, requiredScope) {
+			allowed, mineOnly := xapiPermitted(scopesJSON, r.Method, r.URL.Path)
+			if !allowed {
 				writeJSON(w, http.StatusForbidden, errorResponse{Error: "insufficient scope"})
 				return
 			}
@@ -128,6 +213,9 @@ func XAPIClientAuth(cfg config.Config, db *pgxpool.Pool) func(http.Handler) http
 
 			ctx := context.WithValue(r.Context(), xapiTenantKey, tenant)
 			ctx = context.WithValue(ctx, xapiClientIDKey, clientID)
+			ctx = context.WithValue(ctx, xapiKeyIDKey, keyID)
+			ctx = context.WithValue(ctx, xapiMineOnlyKey, mineOnly)
+			ctx = context.WithValue(ctx, xapiDefineKey, xapiCanDefine(scopesJSON))
 			if dataStoreID != nil && *dataStoreID != "" {
 				ctx = context.WithValue(ctx, xapiDataStoreIDKey, *dataStoreID)
 			}

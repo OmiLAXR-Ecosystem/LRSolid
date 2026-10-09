@@ -39,6 +39,7 @@ func NewStoreBundle(ctx context.Context, cfg store.DataStoreConfig) (store.Store
 		AgentProfiles:    NewAgentProfileStore(db),
 		ActivityProfiles: NewActivityProfileStore(db),
 		Attachments:      NewAttachmentStore(db),
+		Activities:       NewActivityStore(db),
 		Lifecycle:        &poolLifecycle{pool: db},
 		DatabaseType:     "postgres",
 		Capabilities:     store.ExternalCapabilities(),

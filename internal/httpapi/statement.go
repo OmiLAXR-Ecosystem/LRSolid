@@ -40,6 +40,8 @@ type statementDetailResponse struct {
 	ActorMBox *string                         `json:"actorMbox,omitempty"`
 	VerbID    *string                         `json:"verbId,omitempty"`
 	ObjectID  *string                         `json:"objectId,omitempty"`
+	Version   string                          `json:"version,omitempty"`
+	Authority string                          `json:"authority,omitempty"`
 	Metadata  statementDetailMetadataResponse `json:"metadata"`
 	Raw       json.RawMessage                 `json:"raw"`
 }
@@ -209,6 +211,7 @@ func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Han
 			}
 		}
 
+		version, authority := statementVersionAuthority(st.RawJSON)
 		resp := statementDetailResponse{
 			ID:        string(st.ID),
 			StoredAt:  st.StoredAt.Format(time.RFC3339Nano),
@@ -216,10 +219,27 @@ func StatementByID(_ config.Config, svc *lrs.Service, db *pgxpool.Pool) http.Han
 			ActorMBox: st.ActorMBox,
 			VerbID:    st.VerbID,
 			ObjectID:  st.ObjectID,
+			Version:   version,
+			Authority: authority,
 			Metadata:  md,
 			Raw:       json.RawMessage(st.RawJSON),
 		}
 
 		writeJSON(w, http.StatusOK, resp)
 	}
+}
+
+func statementVersionAuthority(raw []byte) (string, string) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return "", ""
+	}
+	version, _ := m["version"].(string)
+	authority := ""
+	if authz, ok := m["authority"]; ok {
+		if b, err := json.Marshal(authz); err == nil {
+			authority = string(b)
+		}
+	}
+	return version, authority
 }

@@ -1,0 +1,15 @@
+# Example edge proxy for the public deployment.
+# lrsolid.cloud serves the static landing page.
+# app.lrsolid.cloud serves the admin UI, which proxies /api, /xapi, and /docs to the Go API.
+#
+# Point both DNS names at this proxy. Run Caddy on the same Docker network as the
+# `landing` and `web` services from the root docker-compose.yml. Caddy obtains
+# certificates when the names resolve to this host.
+
+lrsolid.cloud {
+	reverse_proxy landing:80
+}
+
+app.lrsolid.cloud {
+	reverse_proxy web:80
+}

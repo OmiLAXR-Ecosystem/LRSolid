@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    html {
+        color-scheme: dark;
+        scroll-behavior: smooth;
+    }
+
+    body {
+        @apply bg-slate-950 text-slate-100 antialiased;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+}
+
+.hero-wash {
+    background-image:
+        radial-gradient(ellipse 70% 50% at 15% -10%, rgba(45, 212, 191, 0.16), transparent 55%),
+        radial-gradient(ellipse 50% 40% at 90% 0%, rgba(34, 211, 238, 0.08), transparent 50%),
+        linear-gradient(to right, rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+    background-size: auto, auto, 56px 56px, 56px 56px;
+}

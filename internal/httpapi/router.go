@@ -43,11 +43,31 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 		r.Get("/saml/{slug}/metadata", SAMLMetadata(cfg, db, dataSecrets))
 	})
 
-	// xAPI routes: require API client credentials (HTTP Basic key_id:secret)
+	// xAPI routes. About is unauthenticated. Everything else needs client credentials.
 	r.Route("/xapi", func(r chi.Router) {
-		r.Use(XAPIClientAuth(cfg, db))
-		r.Post("/statements", PostStatements(cfg, svc))
-		r.Get("/statements", GetStatements(cfg, svc))
+		r.Use(AlternateRequestSyntax)
+		r.Get("/about", GetAbout())
+		r.Group(func(r chi.Router) {
+			r.Use(XAPIClientAuth(cfg, db))
+			r.Use(XAPIVersion(cfg))
+			r.Post("/statements", PostStatements(cfg, svc))
+			r.Put("/statements", PutStatements(cfg, svc))
+			r.Get("/statements", GetStatements(cfg, svc))
+			r.Method(http.MethodGet, "/activities/state", StateDocument(cfg, svc))
+			r.Method(http.MethodPut, "/activities/state", StateDocument(cfg, svc))
+			r.Method(http.MethodPost, "/activities/state", StateDocument(cfg, svc))
+			r.Method(http.MethodDelete, "/activities/state", StateDocument(cfg, svc))
+			r.Method(http.MethodGet, "/activities/profile", ActivityProfileDocument(cfg, svc))
+			r.Method(http.MethodPut, "/activities/profile", ActivityProfileDocument(cfg, svc))
+			r.Method(http.MethodPost, "/activities/profile", ActivityProfileDocument(cfg, svc))
+			r.Method(http.MethodDelete, "/activities/profile", ActivityProfileDocument(cfg, svc))
+			r.Method(http.MethodGet, "/agents/profile", AgentProfileDocument(cfg, svc))
+			r.Method(http.MethodPut, "/agents/profile", AgentProfileDocument(cfg, svc))
+			r.Method(http.MethodPost, "/agents/profile", AgentProfileDocument(cfg, svc))
+			r.Method(http.MethodDelete, "/agents/profile", AgentProfileDocument(cfg, svc))
+			r.Get("/activities", GetActivity(cfg, svc))
+			r.Get("/agents", GetAgent(cfg, svc))
+		})
 	})
 
 	// Protected routes — require valid session cookie

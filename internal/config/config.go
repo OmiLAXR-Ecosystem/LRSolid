@@ -17,8 +17,10 @@ type Config struct {
 	DataStoreSecretKeyFile string
 
 	// xAPI basics
-	DefaultTenant string
-	MaxPageLimit  int
+	DefaultTenant     string
+	MaxPageLimit      int
+	XAPILegacyCompat  bool
+	XAPIAttachmentDir string
 
 	// Admin UI
 	DefaultOrg string
@@ -96,6 +98,8 @@ func Load() (Config, error) {
 		DataStoreSecretKeyFile:     getenv("DATA_STORE_SECRET_KEY_FILE", ""),
 		DefaultTenant:              getenv("DEFAULT_TENANT", "default"),
 		MaxPageLimit:               getenvInt("MAX_PAGE_LIMIT", 100),
+		XAPILegacyCompat:           getenvBool("XAPI_LEGACY_COMPAT", false),
+		XAPIAttachmentDir:          getenv("XAPI_ATTACHMENT_DIR", "data/xapi-attachments"),
 		DefaultOrg:                 getenv("DEFAULT_ORG", "default"),
 		JWTSecret:                  getenv("JWT_SECRET", ""),
 		SMTPHost:                   getenv("SMTP_HOST", ""),

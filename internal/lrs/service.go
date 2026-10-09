@@ -3,12 +3,13 @@ package lrs
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
+	"os"
+	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/SGoerzen/LRSolid/internal/store"
+	"github.com/SGoerzen/LRSolid/internal/xapi"
 )
 
 type contextKey string
@@ -39,11 +40,25 @@ type LimitChecker interface {
 	Check(ctx context.Context, tenant store.TenantID, clientID *string, count int, bytes int64) error
 }
 
+// ErrCannotVoidVoiding is returned when a statement targets another voiding statement.
+var ErrCannotVoidVoiding = errors.New("cannot void a voiding statement")
+
 type Service struct {
-	registry *store.Registry
-	fallback store.StatementStore // control-plane Postgres, used when no external store is selected
-	counters StatementCounters
-	limits   LimitChecker
+	registry      *store.Registry
+	fallback      store.StatementStore // control-plane Postgres, used when no external store is selected
+	control       store.StoreBundle
+	counters      StatementCounters
+	limits        LimitChecker
+	attachmentDir string
+}
+
+// IngestOptions carries the xAPI version negotiation and the authority the LRS stamps on.
+type IngestOptions struct {
+	Version          string
+	AuthorityName    string
+	AuthorityHome    string
+	DefineActivities bool
+	StatementID      string
 }
 
 func NewService(registry *store.Registry, fallback store.StatementStore, counters StatementCounters, limits LimitChecker) *Service {
@@ -63,6 +78,34 @@ func (s *Service) ExternalStoreIDs() []string {
 	return s.registry.IDs()
 }
 
+// UseControlPlane registers the primary database's full xAPI bundle.
+func (s *Service) UseControlPlane(b store.StoreBundle) {
+	s.control = b
+	if b.Statements != nil {
+		s.fallback = b.Statements
+	}
+}
+
+// SetAttachmentDir is the local directory used for attachment bytes.
+func (s *Service) SetAttachmentDir(dir string) {
+	s.attachmentDir = dir
+}
+
+// Bundle resolves the xAPI stores for this request.
+func (s *Service) Bundle(ctx context.Context) store.StoreBundle {
+	if s.registry != nil {
+		if id := dataStoreIDFromCtx(ctx); id != "" {
+			if bundle, err := s.registry.Get(id); err == nil && bundle.Statements != nil {
+				return bundle
+			}
+		}
+	}
+	if s.control.Statements != nil {
+		return s.control
+	}
+	return store.StoreBundle{Statements: s.fallback}
+}
+
 func (s *Service) statementsFor(ctx context.Context) store.StatementStore {
 	if s.registry != nil {
 		if id := dataStoreIDFromCtx(ctx); id != "" {
@@ -75,66 +118,72 @@ func (s *Service) statementsFor(ctx context.Context) store.StatementStore {
 }
 
 func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, clientID *string, raw []json.RawMessage) ([]string, error) {
+	return s.Ingest(ctx, tenant, clientID, raw, IngestOptions{})
+}
+
+func (s *Service) Ingest(ctx context.Context, tenant store.TenantID, clientID *string, raw []json.RawMessage, opt IngestOptions) ([]string, error) {
 	now := time.Now().UTC()
+	version := opt.Version
+	if version == "" {
+		version = xapi.Version103
+	}
+	if opt.StatementID != "" && len(raw) != 1 {
+		return nil, &xapi.ValidationError{Reason: "PUT accepts a single statement"}
+	}
+
 	stmts := make([]store.Statement, 0, len(raw))
 	ids := make([]string, 0, len(raw))
+	var activities []xapi.ActivityDef
+	seen := map[string]struct{}{}
 
 	for _, r := range raw {
-		// Minimal parse: id, actor.mbox, verb.id, object.id, timestamp
-		var m map[string]any
-		if err := json.Unmarshal(r, &m); err != nil {
-			return nil, fmt.Errorf("invalid statement json: %w", err)
+		prepared, err := xapi.Prepare(r, version, now, opt.AuthorityName, opt.AuthorityHome, opt.StatementID)
+		if err != nil {
+			return nil, err
 		}
-
-		id := ""
-		if v, ok := m["id"].(string); ok && v != "" {
-			id = v
-		} else {
-			// allow server generated id (MVP)
-			id = uuid.NewString()
-			m["id"] = id
-			rebuilt, _ := json.Marshal(m)
-			r = rebuilt
+		st := prepared.Statement
+		st.TenantID = tenant
+		st.ClientID = clientID
+		if _, ok := seen[string(st.ID)]; ok {
+			return nil, &xapi.ValidationError{Reason: "duplicate statement id in batch"}
 		}
+		seen[string(st.ID)] = struct{}{}
+		stmts = append(stmts, st)
+		ids = append(ids, string(st.ID))
+		activities = append(activities, prepared.Activities...)
+	}
 
-		stmt := store.Statement{
-			TenantID: tenant,
-			ID:       store.StatementID(id),
-			StoredAt: now,
-			ClientID: clientID,
-			RawJSON:  []byte(r),
+	target := s.statementsFor(ctx)
+	voiding := map[string]struct{}{}
+	for _, st := range stmts {
+		if st.VoidsID != nil {
+			voiding[string(st.ID)] = struct{}{}
 		}
-
-		// actor.mbox
-		if actor, ok := m["actor"].(map[string]any); ok {
-			if mb, ok := actor["mbox"].(string); ok && mb != "" {
-				stmt.ActorMBox = &mb
-			}
+	}
+	for _, st := range stmts {
+		if st.VoidsID == nil {
+			continue
 		}
-
-		// verb.id
-		if verb, ok := m["verb"].(map[string]any); ok {
-			if vid, ok := verb["id"].(string); ok && vid != "" {
-				stmt.VerbID = &vid
-			}
+		if _, ok := voiding[string(*st.VoidsID)]; ok {
+			return nil, ErrCannotVoidVoiding
 		}
-
-		// object.id
-		if obj, ok := m["object"].(map[string]any); ok {
-			if oid, ok := obj["id"].(string); ok && oid != "" {
-				stmt.ObjectID = &oid
-			}
+		existing, err := target.GetStatementByID(ctx, tenant, *st.VoidsID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return nil, err
 		}
-
-		// timestamp (optional)
-		if ts, ok := m["timestamp"].(string); ok && ts != "" {
-			if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
-				stmt.Timestamp = &t
-			}
+		if err == nil && existing.VerbID != nil && *existing.VerbID == xapi.VerbVoided {
+			return nil, ErrCannotVoidVoiding
 		}
-
-		stmts = append(stmts, stmt)
-		ids = append(ids, id)
+	}
+	for i := range stmts {
+		if stmts[i].VoidsID != nil {
+			continue
+		}
+		voided, err := target.HasVoidingStatement(ctx, tenant, stmts[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		stmts[i].Voided = voided
 	}
 
 	var totalBytes int64
@@ -147,10 +196,23 @@ func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, c
 		}
 	}
 
-	target := s.statementsFor(ctx)
 	n, err := target.UpsertStatements(ctx, stmts)
 	if err != nil {
 		return nil, err
+	}
+	for _, st := range stmts {
+		if st.VoidsID != nil {
+			if err := target.MarkVoided(ctx, tenant, *st.VoidsID); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if opt.DefineActivities {
+		if activitiesStore := s.Bundle(ctx).Activities; activitiesStore != nil {
+			for _, act := range activities {
+				_ = activitiesStore.PutActivity(ctx, tenant, act.ID, act.Definition)
+			}
+		}
 	}
 	if s.counters != nil && target != s.fallback && n > 0 {
 		bytes := totalBytes
@@ -162,8 +224,42 @@ func (s *Service) IngestStatements(ctx context.Context, tenant store.TenantID, c
 	return ids, nil
 }
 
+// SaveAttachment writes attachment bytes and metadata for a tenant.
+func (s *Service) SaveAttachment(ctx context.Context, tenant store.TenantID, sha, contentType string, body []byte) error {
+	if s.attachmentDir == "" {
+		return errors.New("attachment storage is not configured")
+	}
+	dir := filepath.Join(s.attachmentDir, string(tenant))
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, sha)
+	if err := os.WriteFile(path, body, 0o640); err != nil {
+		return err
+	}
+	if at := s.Bundle(ctx).Attachments; at != nil {
+		return at.UpsertAttachmentMeta(ctx, store.AttachmentMeta{
+			TenantID:    tenant,
+			SHA256:      sha,
+			ContentType: contentType,
+			Length:      int64(len(body)),
+			Stored:      &store.AttachmentRef{Bucket: "local", Key: sha, Size: int64(len(body)), SHA256: sha},
+			CreatedAt:   time.Now().UTC(),
+		})
+	}
+	return nil
+}
+
+// ReadAttachment returns previously stored attachment bytes.
+func (s *Service) ReadAttachment(tenant store.TenantID, sha string) ([]byte, error) {
+	if s.attachmentDir == "" {
+		return nil, os.ErrNotExist
+	}
+	return os.ReadFile(filepath.Join(s.attachmentDir, string(tenant), sha))
+}
+
 func (s *Service) QueryStatements(ctx context.Context, f store.StatementFilter) (store.StatementPage, error) {
-	if f.Limit <= 0 {
+	if f.Limit < 0 {
 		f.Limit = 50
 	}
 	if f.Limit > 1000 {

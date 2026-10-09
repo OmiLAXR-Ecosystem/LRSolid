@@ -26,6 +26,14 @@ func (f *fakeStmtStore) GetStatementByID(ctx context.Context, tenant store.Tenan
 	return store.Statement{}, store.ErrNotFound
 }
 
+func (f *fakeStmtStore) MarkVoided(ctx context.Context, tenant store.TenantID, id store.StatementID) error {
+	return nil
+}
+
+func (f *fakeStmtStore) HasVoidingStatement(ctx context.Context, tenant store.TenantID, id store.StatementID) (bool, error) {
+	return false, nil
+}
+
 func TestIngestStatements_AssignsIDAndExtractsFields(t *testing.T) {
 	fs := &fakeStmtStore{}
 	svc := NewService(nil, fs, nil, nil)

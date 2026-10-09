@@ -7,6 +7,100 @@ info:
 servers:
   - url: /
 paths:
+  /xapi/about:
+    get:
+      summary: xAPI About (no authentication)
+      responses:
+        "200":
+          description: Supported xAPI versions
+  /xapi/statements:
+    post:
+      summary: Store xAPI statements
+      parameters:
+        - in: header
+          name: X-Experience-API-Version
+          required: true
+          schema: { type: string, example: "1.0.3" }
+      responses:
+        "200":
+          description: Array of statement ids
+        "400": { description: Invalid statement }
+        "409": { description: Conflicting statement id }
+    put:
+      summary: Store one statement
+      parameters:
+        - in: query
+          name: statementId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Stored }
+        "409": { description: Conflicting statement id }
+    get:
+      summary: Query xAPI statements
+      parameters:
+        - in: query
+          name: statementId
+          schema: { type: string }
+        - in: query
+          name: agent
+          schema: { type: string }
+        - in: query
+          name: verb
+          schema: { type: string }
+        - in: query
+          name: activity
+          schema: { type: string }
+        - in: query
+          name: since
+          schema: { type: string, format: date-time }
+        - in: query
+          name: until
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer }
+        - in: query
+          name: format
+          schema: { type: string, enum: [ids, exact, canonical] }
+      responses:
+        "200":
+          description: Statement result or a single statement
+  /xapi/activities/state:
+    get:
+      summary: Get activity state
+      responses:
+        "200": { description: State document or list of ids }
+  /xapi/activities/profile:
+    get:
+      summary: Get an activity profile
+      responses:
+        "200": { description: Profile document or list of ids }
+  /xapi/agents/profile:
+    get:
+      summary: Get an agent profile
+      responses:
+        "200": { description: Profile document or list of ids }
+  /xapi/activities:
+    get:
+      summary: Canonical activity
+      parameters:
+        - in: query
+          name: activityId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Activity object }
+  /xapi/agents:
+    get:
+      summary: Person for an agent
+      parameters:
+        - in: query
+          name: agent
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Person object }
   /api/connection/statement:
     get:
       summary: List statements via Connection API
@@ -158,4 +252,6 @@ components:
         actorMbox: { type: string, nullable: true }
         verbId: { type: string, nullable: true }
         objectId: { type: string, nullable: true }
+        version: { type: string }
+        authority: { type: string }
         raw: { type: object }
