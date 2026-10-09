@@ -68,7 +68,7 @@ func NewRouter(cfg config.Config, svc *lrs.Service, db *pgxpool.Pool, registry *
 				// Organisation list (no org param required)
 				r.Get("/org", RestListOrgs(cfg, db))
 				r.Route("/admin", func(r chi.Router) {
-					r.Post("/org", AdminCreateOrg(db))
+					r.Post("/org", AdminCreateOrg(cfg, db))
 					r.Post("/user", AdminCreateUser(cfg, db))
 					r.Post("/user/assign", AdminAssignUserToOrg(cfg, db))
 					r.Post("/data-store/test", AdminTestDataStore(cfg, db, dataSecrets, stores))

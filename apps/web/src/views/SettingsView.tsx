@@ -312,7 +312,12 @@ export function SettingsView() {
               <div className="text-lg font-semibold text-slate-800">Usage limits</div>
               <div className="text-sm text-slate-500">Caps for the whole organization. Project, LRS, and client limits apply as well.</div>
             </div>
-            <LimitsEditor org={currentOrg} subjectType="organisation" subjectId={currentOrgRecord.id} />
+            <LimitsEditor
+              org={currentOrg}
+              subjectType="organisation"
+              subjectId={currentOrgRecord.id}
+              readOnly={!canManageAdmin}
+            />
           </div>
         </Card>
       )}

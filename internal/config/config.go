@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -68,6 +69,11 @@ type Config struct {
 	StatsRollupIntervalS int
 	StatsRollupBatchSize int
 
+	// Default usage limits applied when an organisation is created.
+	// Zero means no rule, so self-hosted installs stay unlimited.
+	DefaultOrgStorageBytes     int64
+	DefaultOrgStatementsPerDay int64
+
 	// JS plugins directory (optional). Set via PLUGINS_DIR env var.
 	PluginsDir string
 
@@ -83,52 +89,54 @@ type Config struct {
 
 func Load() (Config, error) {
 	c := Config{
-		Port:                     getenv("PORT", "8080"),
-		Environment:              getenv("ENV", "dev"),
-		PostgresDSN:              getenv("PG_DSN", ""),
-		DataStoreSecretKey:       getenv("DATA_STORE_SECRET_KEY", ""),
-		DataStoreSecretKeyFile:   getenv("DATA_STORE_SECRET_KEY_FILE", ""),
-		DefaultTenant:            getenv("DEFAULT_TENANT", "default"),
-		MaxPageLimit:             getenvInt("MAX_PAGE_LIMIT", 100),
-		DefaultOrg:               getenv("DEFAULT_ORG", "default"),
-		JWTSecret:                getenv("JWT_SECRET", ""),
-		SMTPHost:                 getenv("SMTP_HOST", ""),
-		SMTPPort:                 getenvInt("SMTP_PORT", 587),
-		SMTPUser:                 getenv("SMTP_USER", ""),
-		SMTPPassword:             getenv("SMTP_PASSWORD", ""),
-		SMTPFrom:                 getenv("SMTP_FROM", "noreply@localhost"),
-		AppURL:                   getenv("APP_URL", "http://localhost:5173"),
-		LocalLoginEnabled:        getenvBool("LOCAL_LOGIN_ENABLED", true),
-		LocalLoginExplicit:       os.Getenv("LOCAL_LOGIN_ENABLED") != "",
-		OIDCEnabled:              getenvBool("OIDC_ENABLED", false),
-		OIDCSlug:                 getenv("OIDC_SLUG", "oidc"),
-		OIDCDisplayName:          getenv("OIDC_DISPLAY_NAME", "OpenID Connect"),
-		OIDCIssuer:               getenv("OIDC_ISSUER", ""),
-		OIDCClientID:             getenv("OIDC_CLIENT_ID", ""),
-		OIDCClientSecret:         getenv("OIDC_CLIENT_SECRET", ""),
-		OIDCScopes:               getenv("OIDC_SCOPES", "openid profile email"),
-		OIDCAutoProvision:        getenvBool("OIDC_AUTO_PROVISION", false),
-		OIDCDefaultRole:          getenv("OIDC_DEFAULT_ROLE", "viewer"),
-		OIDCRequireEmailVerified: getenvBool("OIDC_REQUIRE_EMAIL_VERIFIED", false),
-		SAMLEnabled:              getenvBool("SAML_ENABLED", false),
-		SAMLSlug:                 getenv("SAML_SLUG", "shibboleth"),
-		SAMLDisplayName:          getenv("SAML_DISPLAY_NAME", "Shibboleth"),
-		SAMLIDPMetadataURL:       getenv("SAML_IDP_METADATA_URL", ""),
-		SAMLIDPMetadataXML:       getenv("SAML_IDP_METADATA_XML", ""),
-		SAMLSPEntityID:           getenv("SAML_SP_ENTITY_ID", ""),
-		SAMLAutoProvision:        getenvBool("SAML_AUTO_PROVISION", false),
-		SAMLDefaultRole:          getenv("SAML_DEFAULT_ROLE", "viewer"),
-		StatsRollupEnabled:       getenvBool("STATS_ROLLUP_ENABLED", true),
-		StatsRollupIntervalS:     getenvInt("STATS_ROLLUP_INTERVAL_S", 15),
-		StatsRollupBatchSize:     getenvInt("STATS_ROLLUP_BATCH_SIZE", 5000),
-		PluginsDir:               getenv("PLUGINS_DIR", ""),
-		ExportDefaultTargetType:  strings.ToLower(getenv("EXPORT_DEFAULT_TARGET_TYPE", "s3")),
-		ExportS3UploadBaseURL:    getenv("EXPORT_S3_UPLOAD_BASE_URL", ""),
-		ExportS3AccessKey:        getenv("EXPORT_S3_ACCESS_KEY", ""),
-		ExportS3SecretKey:        getenv("EXPORT_S3_SECRET_KEY", ""),
-		ExportS3Region:           getenv("EXPORT_S3_REGION", "us-east-1"),
-		ExportS3AuthToken:        getenv("EXPORT_S3_AUTH_TOKEN", ""),
-		ExportS3PathPrefix:       getenv("EXPORT_S3_PATH_PREFIX", "exports"),
+		Port:                       getenv("PORT", "8080"),
+		Environment:                getenv("ENV", "dev"),
+		PostgresDSN:                getenv("PG_DSN", ""),
+		DataStoreSecretKey:         getenv("DATA_STORE_SECRET_KEY", ""),
+		DataStoreSecretKeyFile:     getenv("DATA_STORE_SECRET_KEY_FILE", ""),
+		DefaultTenant:              getenv("DEFAULT_TENANT", "default"),
+		MaxPageLimit:               getenvInt("MAX_PAGE_LIMIT", 100),
+		DefaultOrg:                 getenv("DEFAULT_ORG", "default"),
+		JWTSecret:                  getenv("JWT_SECRET", ""),
+		SMTPHost:                   getenv("SMTP_HOST", ""),
+		SMTPPort:                   getenvInt("SMTP_PORT", 587),
+		SMTPUser:                   getenv("SMTP_USER", ""),
+		SMTPPassword:               getenv("SMTP_PASSWORD", ""),
+		SMTPFrom:                   getenv("SMTP_FROM", "noreply@localhost"),
+		AppURL:                     getenv("APP_URL", "http://localhost:5173"),
+		LocalLoginEnabled:          getenvBool("LOCAL_LOGIN_ENABLED", true),
+		LocalLoginExplicit:         os.Getenv("LOCAL_LOGIN_ENABLED") != "",
+		OIDCEnabled:                getenvBool("OIDC_ENABLED", false),
+		OIDCSlug:                   getenv("OIDC_SLUG", "oidc"),
+		OIDCDisplayName:            getenv("OIDC_DISPLAY_NAME", "OpenID Connect"),
+		OIDCIssuer:                 getenv("OIDC_ISSUER", ""),
+		OIDCClientID:               getenv("OIDC_CLIENT_ID", ""),
+		OIDCClientSecret:           getenv("OIDC_CLIENT_SECRET", ""),
+		OIDCScopes:                 getenv("OIDC_SCOPES", "openid profile email"),
+		OIDCAutoProvision:          getenvBool("OIDC_AUTO_PROVISION", false),
+		OIDCDefaultRole:            getenv("OIDC_DEFAULT_ROLE", "viewer"),
+		OIDCRequireEmailVerified:   getenvBool("OIDC_REQUIRE_EMAIL_VERIFIED", false),
+		SAMLEnabled:                getenvBool("SAML_ENABLED", false),
+		SAMLSlug:                   getenv("SAML_SLUG", "shibboleth"),
+		SAMLDisplayName:            getenv("SAML_DISPLAY_NAME", "Shibboleth"),
+		SAMLIDPMetadataURL:         getenv("SAML_IDP_METADATA_URL", ""),
+		SAMLIDPMetadataXML:         getenv("SAML_IDP_METADATA_XML", ""),
+		SAMLSPEntityID:             getenv("SAML_SP_ENTITY_ID", ""),
+		SAMLAutoProvision:          getenvBool("SAML_AUTO_PROVISION", false),
+		SAMLDefaultRole:            getenv("SAML_DEFAULT_ROLE", "viewer"),
+		StatsRollupEnabled:         getenvBool("STATS_ROLLUP_ENABLED", true),
+		StatsRollupIntervalS:       getenvInt("STATS_ROLLUP_INTERVAL_S", 15),
+		StatsRollupBatchSize:       getenvInt("STATS_ROLLUP_BATCH_SIZE", 5000),
+		DefaultOrgStorageBytes:     getenvInt64("DEFAULT_ORG_STORAGE_BYTES", 0),
+		DefaultOrgStatementsPerDay: getenvInt64("DEFAULT_ORG_STATEMENTS_PER_DAY", 0),
+		PluginsDir:                 getenv("PLUGINS_DIR", ""),
+		ExportDefaultTargetType:    strings.ToLower(getenv("EXPORT_DEFAULT_TARGET_TYPE", "s3")),
+		ExportS3UploadBaseURL:      getenv("EXPORT_S3_UPLOAD_BASE_URL", ""),
+		ExportS3AccessKey:          getenv("EXPORT_S3_ACCESS_KEY", ""),
+		ExportS3SecretKey:          getenv("EXPORT_S3_SECRET_KEY", ""),
+		ExportS3Region:             getenv("EXPORT_S3_REGION", "us-east-1"),
+		ExportS3AuthToken:          getenv("EXPORT_S3_AUTH_TOKEN", ""),
+		ExportS3PathPrefix:         getenv("EXPORT_S3_PATH_PREFIX", "exports"),
 	}
 
 	if c.PostgresDSN == "" {
@@ -215,6 +223,18 @@ func getenvInt(k string, def int) int {
 	var n int
 	_, err := fmt.Sscanf(v, "%d", &n)
 	if err != nil {
+		return def
+	}
+	return n
+}
+
+func getenvInt64(k string, def int64) int64 {
+	v := strings.TrimSpace(os.Getenv(k))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n < 0 {
 		return def
 	}
 	return n

@@ -40,3 +40,8 @@ func ClaimsFromContext(ctx context.Context) (Claims, bool) {
 	c, ok := ctx.Value(claimsKey).(Claims)
 	return c, ok
 }
+
+// WithClaims returns a context carrying c, the same way Middleware does after a valid session.
+func WithClaims(ctx context.Context, c Claims) context.Context {
+	return context.WithValue(ctx, claimsKey, c)
+}

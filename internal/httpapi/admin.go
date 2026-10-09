@@ -19,6 +19,7 @@ import (
 
 	"github.com/SGoerzen/LRSolid/internal/auth"
 	"github.com/SGoerzen/LRSolid/internal/config"
+	"github.com/SGoerzen/LRSolid/internal/limits"
 	"github.com/SGoerzen/LRSolid/internal/lrs"
 	"github.com/SGoerzen/LRSolid/internal/plugins"
 	"github.com/SGoerzen/LRSolid/internal/store"
@@ -350,7 +351,7 @@ type createOrgRequest struct {
 	Slug string `json:"slug"`
 }
 
-func AdminCreateOrg(db *pgxpool.Pool) http.HandlerFunc {
+func AdminCreateOrg(cfg config.Config, db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		if _, ok := requireAdminClaims(ctx); !ok {
@@ -376,13 +377,28 @@ func AdminCreateOrg(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		insertWithSlug := func(slug string) (restOrg, error) {
+			tx, err := db.Begin(ctx)
+			if err != nil {
+				return restOrg{}, err
+			}
+			defer tx.Rollback(ctx)
+
 			var org restOrg
-			err := db.QueryRow(ctx, `
+			err = tx.QueryRow(ctx, `
 				INSERT INTO organisations (slug, name)
 				VALUES ($1, $2)
 				RETURNING id, slug, name, statement_count
 			`, slug, req.Name).Scan(&org.ID, &org.Slug, &org.Name, &org.StatementCount)
-			return org, err
+			if err != nil {
+				return restOrg{}, err
+			}
+			if err := limits.ApplyOrgDefaults(ctx, tx, org.ID, cfg.DefaultOrgStorageBytes, cfg.DefaultOrgStatementsPerDay); err != nil {
+				return restOrg{}, err
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return restOrg{}, err
+			}
+			return org, nil
 		}
 
 		if req.Slug != "" {

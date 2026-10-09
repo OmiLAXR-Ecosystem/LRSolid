@@ -11,6 +11,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/SGoerzen/LRSolid/internal/config"
+	"github.com/SGoerzen/LRSolid/internal/limits"
 )
 
 func main() {
@@ -42,11 +45,12 @@ func main() {
 		}
 	}
 
-	dsn := os.Getenv("PG_DSN")
-	if dsn == "" {
-		fmt.Fprintln(os.Stderr, "ERROR: PG_DSN is required")
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ERROR:", err)
 		os.Exit(2)
 	}
+	dsn := cfg.PostgresDSN
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -83,6 +87,11 @@ func main() {
 	`, *orgSlug, *orgName).Scan(&orgID)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ERROR: upsert organisation:", err)
+		os.Exit(1)
+	}
+
+	if err := limits.ApplyOrgDefaults(ctx, tx, orgID, cfg.DefaultOrgStorageBytes, cfg.DefaultOrgStatementsPerDay); err != nil {
+		fmt.Fprintln(os.Stderr, "ERROR: default usage limits:", err)
 		os.Exit(1)
 	}
 

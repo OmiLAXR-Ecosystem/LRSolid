@@ -32,7 +32,17 @@ function toInput(limit: UsageLimit | undefined, bytes: boolean): string {
   return String(Math.round((limit.maxValue / (1024 * 1024)) * 100) / 100);
 }
 
-export function LimitsEditor({ org, subjectType, subjectId }: { org: string; subjectType: UsageSubject; subjectId: string }) {
+export function LimitsEditor({
+  org,
+  subjectType,
+  subjectId,
+  readOnly = false,
+}: {
+  org: string;
+  subjectType: UsageSubject;
+  subjectId: string;
+  readOnly?: boolean;
+}) {
   const [snapshot, setSnapshot] = useState<UsageSnapshot | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
@@ -117,8 +127,13 @@ export function LimitsEditor({ org, subjectType, subjectId }: { org: string; sub
   return (
     <div className="space-y-3">
       <p className="text-sm text-slate-500">
-        A limit counts this level and everything under it. Lower levels can add stricter limits. Clear the value and save to remove a rule.
+        {readOnly
+          ? "Usage for this level and everything under it."
+          : "A limit counts this level and everything under it. Lower levels can add stricter limits. Clear the value and save to remove a rule."}
       </p>
+      {subjectType === "organisation" && (
+        <p className="text-sm text-slate-600">Need more storage? Contact the operator of this instance.</p>
+      )}
       {error && <div className="text-sm text-red-600">{error}</div>}
       <div className="divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200">
         {METRICS.map((metric) => {
@@ -144,39 +159,41 @@ export function LimitsEditor({ org, subjectType, subjectId }: { org: string; sub
                   />
                 </div>
               )}
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  value={drafts[metric.id] ?? ""}
-                  onChange={(e) => setDrafts((d) => ({ ...d, [metric.id]: e.target.value }))}
-                  placeholder="No limit"
-                  inputMode="decimal"
-                  className="w-36 rounded-lg bg-white px-3 py-1.5 text-sm text-slate-700 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
-                />
-                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+              {!readOnly && (
+                <div className="flex flex-wrap items-center gap-2">
                   <input
-                    type="checkbox"
-                    checked={enabled[metric.id] !== false}
-                    onChange={(e) => setEnabled((s) => ({ ...s, [metric.id]: e.target.checked }))}
+                    value={drafts[metric.id] ?? ""}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [metric.id]: e.target.value }))}
+                    placeholder="No limit"
+                    inputMode="decimal"
+                    className="w-36 rounded-lg bg-white px-3 py-1.5 text-sm text-slate-700 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
                   />
-                  Enforce
-                </label>
-                <button
-                  onClick={() => void save(metric.id, !!metric.bytes)}
-                  disabled={busy === metric.id}
-                  className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-60"
-                >
-                  {busy === metric.id ? "Saving…" : "Save"}
-                </button>
-                {rule && (
+                  <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={enabled[metric.id] !== false}
+                      onChange={(e) => setEnabled((s) => ({ ...s, [metric.id]: e.target.checked }))}
+                    />
+                    Enforce
+                  </label>
                   <button
-                    onClick={() => void remove(metric.id)}
+                    onClick={() => void save(metric.id, !!metric.bytes)}
                     disabled={busy === metric.id}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                    className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-60"
                   >
-                    Remove
+                    {busy === metric.id ? "Saving…" : "Save"}
                   </button>
-                )}
-              </div>
+                  {rule && (
+                    <button
+                      onClick={() => void remove(metric.id)}
+                      disabled={busy === metric.id}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
